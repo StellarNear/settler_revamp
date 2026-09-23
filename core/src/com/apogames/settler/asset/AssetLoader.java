@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2005-2020 Dirk Aporius <dirk.aporius@gmail.com>
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -12,7 +12,7 @@
  *    documentation and/or other materials provided with the distribution.
  * 3. The name of the author may not be used to endorse or promote products
  *    derived from this software without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
  * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
  * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
@@ -28,6 +28,7 @@
 package com.apogames.settler.asset;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -81,6 +82,8 @@ public class AssetLoader {
 	public static TextureRegion hudRightTextureRegion;
 	private static Texture circlesTexture;
 	public static TextureRegion[] circlesTextureRegion;
+	private static Texture extraNumbersTexture;
+	public static TextureRegion[] numberTextureRegion;
 	public static BitmapFont font40;
 	public static BitmapFont font20;
 	public static BitmapFont font15;
@@ -208,12 +211,41 @@ public class AssetLoader {
 		}
 
 		FreeTypeFontGenerator generator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/OpenSans.ttf"));
+		loadNumberRegions();
 		font15 = generateFont(generator, 15);
 		font20 = generateFont(generator, 20);
 		font25 = generateFont(generator, 25);
 		font30 = generateFont(generator, 30);
 		font40 = generateFont(generator, 40);
 		generator.dispose();
+	}
+
+	private static void loadNumberRegions() {
+		numberTextureRegion = new TextureRegion[9];
+		System.arraycopy(circlesTextureRegion, 0, numberTextureRegion, 0, 5);
+		Pixmap source = new Pixmap(Gdx.files.internal("images/circles.png"));
+		Pixmap extra = new Pixmap(256, 64, Pixmap.Format.RGBA8888);
+		extra.setBlending(Pixmap.Blending.None);
+		int[] colors = {0x99DDEEFF, 0xFFC48CFF, 0xD9B3E6FF, 0xC8CDD2FF};
+		for (int index = 0; index < colors.length; index++) {
+			for (int row = 0; row < 64; row++) {
+				for (int column = 0; column < 64; column++) {
+					int pixel = source.getPixel(column, row);
+					int red = ((pixel >>> 24) & 255) * ((colors[index] >>> 24) & 255) / 255;
+					int green = ((pixel >>> 16) & 255) * ((colors[index] >>> 16) & 255) / 255;
+					int blue = ((pixel >>> 8) & 255) * ((colors[index] >>> 8) & 255) / 255;
+					extra.drawPixel(index * 64 + column, row, red << 24 | green << 16 | blue << 8 | (pixel & 255));
+				}
+			}
+		}
+		extraNumbersTexture = new Texture(extra);
+		extraNumbersTexture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+		for (int index = 0; index < colors.length; index++) {
+			numberTextureRegion[index + 5] = new TextureRegion(extraNumbersTexture, index * 64, 0, 64, 64);
+			numberTextureRegion[index + 5].flip(false, true);
+		}
+		source.dispose();
+		extra.dispose();
 	}
 
 	private static BitmapFont generateFont(FreeTypeFontGenerator generator, int size) {
@@ -231,6 +263,7 @@ public class AssetLoader {
 	public static void dispose() {
 		backgroundTexture.dispose();
 		circlesTexture.dispose();
+		extraNumbersTexture.dispose();
 		backgroundMainTexture.dispose();
 		boardMainTexture.dispose();
 		hudRightTexture.dispose();

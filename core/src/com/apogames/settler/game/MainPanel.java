@@ -21,7 +21,7 @@ public class MainPanel extends GameScreen {
     private Tiwanaku game;
     private Menu menu;
     private Algorithm algorithm;
-    
+
     //private FPSLogger logger = new FPSLogger();
 
     public MainPanel() {
@@ -62,7 +62,11 @@ public class MainPanel extends GameScreen {
     }
 
     public void changeToGame(LevelSize levelSize, boolean newLevel, Difficulty difficulty) {
-        this.game.setValues(levelSize, newLevel, difficulty);
+        changeToGame(levelSize, newLevel, difficulty, 5);
+    }
+
+    public void changeToGame(LevelSize levelSize, boolean newLevel, Difficulty difficulty, int maxRegionSize) {
+        this.game.setValues(levelSize, newLevel, difficulty, maxRegionSize);
         this.changeModel(this.game);
     }
 
@@ -91,7 +95,7 @@ public class MainPanel extends GameScreen {
         this.model.setNeededButtonsVisible();
         this.model.init();
     }
-    
+
     public final void setButtonsInvisible() {
     	for (int i = 0; i < this.getButtons().size(); i++) {
             this.getButtons().get(i).setVisible(false);

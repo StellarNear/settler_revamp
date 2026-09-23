@@ -16,6 +16,11 @@ public class UniqueSolution {
     private Solve solve;
 
     private boolean found = false;
+    private byte[][] workingSolution;
+    private byte[][] blacklist;
+    private int deleteValues;
+    private int removedValues;
+    private int completedChecks;
 
     public static void main(String[] args) {
         UniqueSolution uniqueSolution = new UniqueSolution();
@@ -73,60 +78,89 @@ public class UniqueSolution {
     }
 
     public byte[][] getStartLevel(Difficulty difficulty) {
+        beginRemoval(difficulty);
+        while (!stepRemoval()) {
+        }
+        return this.workingSolution;
+    }
+
+    public void beginRemoval(Difficulty difficulty) {
         this.found = false;
         this.difficulty = difficulty;
-        //System.out.println(this.difficulty);
         int totalCells = this.background.length * this.background[0].length;
-        int deleteValues = totalCells / 2;
-        // For large levels (Uber/Titan) removing half the cells at once makes the
-        // uniqueness check recurse through too many expensive solve attempts.
-        // Start with a smaller chunk so generation finishes quickly.
-        if (totalCells > 45) {
-            deleteValues = Math.max(1, totalCells / 8);
-        }
-        return getStartLevel(deleteValues, 0, this.solution, new byte[this.background.length][this.background[0].length]);
+        this.deleteValues = Math.max(1, totalCells > 45 ? totalCells / 8 : totalCells / 2);
+        this.removedValues = 0;
+        this.completedChecks = 0;
+        this.workingSolution = Helper.cloneArray(this.solution);
+        this.blacklist = new byte[this.background.length][this.background[0].length];
     }
 
     public byte[][] getStartLevel(int deleteValues, int placedValues, byte[][] solution, byte[][] blacklist) {
-        if (found) {
-            return solution;
+        this.deleteValues = Math.max(1, deleteValues);
+        this.removedValues = placedValues;
+        this.workingSolution = Helper.cloneArray(solution);
+        this.blacklist = Helper.cloneArray(blacklist);
+        this.completedChecks = 0;
+        while (!stepRemoval()) {
         }
-        byte[][] orgSolution = Helper.cloneArray(solution);
-        int orgPlacedValues = placedValues;
+        return this.workingSolution;
+    }
 
-        if (placedValues > 0 && placedValues >= (1 - this.difficulty.getValue()) * background.length * background[0].length) {
-            return solution;
+    public boolean stepRemoval() {
+        if (this.found) {
+            return true;
         }
-        if (deleteValues == 1 && canNotPlaceMore(solution, blacklist)) {
-            return solution;
+        int totalCells = this.background.length * this.background[0].length;
+        if (this.removedValues >= (1 - this.difficulty.getValue()) * totalCells
+                || canNotPlaceMore(this.workingSolution, this.blacklist)) {
+            this.found = true;
+            return true;
         }
-        int randomX = -1;
-        int randomY = -1;
-        for (int i = 0; i < deleteValues; i++) {
-            do {
-                randomX = (int)(Math.random() * solution[0].length);
-                randomY = (int)(Math.random() * solution.length);
-            } while (blacklist[randomY][randomX] == 1 || solution[randomY][randomX] == 0);
-
-            placedValues += 1;
-            blacklist[randomY][randomX] = 1;
-            solution[randomY][randomX] = 0;
+        ArrayList<Integer> candidates = new ArrayList<>();
+        int width = this.background[0].length;
+        for (int row = 0; row < this.background.length; row++) {
+            for (int column = 0; column < width; column++) {
+                if (this.workingSolution[row][column] != 0 && this.blacklist[row][column] == 0) {
+                    candidates.add(row * width + column);
+                }
+            }
         }
-
-        //this.solve = new Solve(this.background);
-        byte[][] saveSpots = Helper.cloneArray(solution);
+        byte[][] candidate = Helper.cloneArray(this.workingSolution);
+        int removalCount = Math.min(this.deleteValues, candidates.size());
+        for (int index = 0; index < removalCount; index++) {
+            int cell = candidates.remove((int) (Math.random() * candidates.size()));
+            this.blacklist[cell / width][cell % width] = 1;
+            candidate[cell / width][cell % width] = 0;
+        }
+        byte[][] saveSpots = Helper.cloneArray(candidate);
         this.solve.reset();
         this.solve.setPossibleValues(saveSpots);
         ArrayList<byte[][]> solutions = this.solve.tryToSolveLevel(saveSpots, 1, this.difficulty);
+        this.completedChecks += 1;
         if (solutions.size() != 1) {
-            if (deleteValues > 1) {
-                deleteValues = Math.max(1, deleteValues / 2);
-                blacklist = new byte[this.background.length][this.background[0].length];
+            if (this.deleteValues > 1) {
+                this.deleteValues = Math.max(1, this.deleteValues / 2);
+                this.blacklist = new byte[this.background.length][width];
             }
-            return getStartLevel(deleteValues, orgPlacedValues, orgSolution, blacklist);
         } else {
-            return getStartLevel(1, placedValues, solution, new byte[this.background.length][this.background[0].length]);
+            this.workingSolution = candidate;
+            this.removedValues += removalCount;
+            this.deleteValues = 1;
+            this.blacklist = new byte[this.background.length][width];
         }
+        return false;
+    }
+
+    public byte[][] getCurrentStartLevel() {
+        return this.workingSolution;
+    }
+
+    public int getCompletedChecks() {
+        return this.completedChecks;
+    }
+
+    public int getRemovedValues() {
+        return this.removedValues;
     }
 
     private boolean canNotPlaceMore(byte[][] solution, byte[][] blacklist) {

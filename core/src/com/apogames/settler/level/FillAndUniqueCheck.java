@@ -39,8 +39,20 @@ public class FillAndUniqueCheck {
     private AlgorithmX algorithmX = new AlgorithmX();
 
     private Difficulty difficulty;
+    private final int maxRegionSize;
+    private UniqueSolution clueRemoval;
+    private byte[][] realSolution;
+    private byte[][] bestStartLevel;
+    private int bestClueCount;
+    private int removalAttempts;
+    private int completedClueChecks;
 
     public FillAndUniqueCheck(Difficulty difficulty) {
+        this(difficulty, 5);
+    }
+
+    public FillAndUniqueCheck(Difficulty difficulty, int maxRegionSize) {
+        this.maxRegionSize = maxRegionSize;
         this.difficulty = difficulty;
         this.init();
     }
@@ -50,6 +62,15 @@ public class FillAndUniqueCheck {
     }
 
     public boolean fillLevel(byte[][] background, byte[][] generatedSolution) {
+        if (!beginFill(background, generatedSolution)) {
+            return false;
+        }
+        while (!stepFill()) {
+        }
+        return true;
+    }
+
+    public boolean beginFill(byte[][] background, byte[][] generatedSolution) {
         if (found) {
             return true;
         }
@@ -61,7 +82,7 @@ public class FillAndUniqueCheck {
         for (int y = 0; y < background.length; y++) {
             for (int x = 0; x < background[0].length; x++) {
                 this.regionSize[y][x] = getRegionSize(x, y, background[y][x], background, new boolean[background.length][background[0].length]);
-                if (this.regionSize[y][x] > 5) {
+                if (this.regionSize[y][x] > this.maxRegionSize) {
                     return false;
                 }
                 if (this.regionSize[y][x] == 0) {
@@ -84,7 +105,7 @@ public class FillAndUniqueCheck {
 
         boolean countAllSolutions = false;
         int maxLevel = 1000000;
-        if (this.myBackground.length * this.myBackground[0].length > 31) {
+        if (this.maxRegionSize > 5 || this.myBackground.length * this.myBackground[0].length > 31) {
             maxLevel = 1;
         }
 
@@ -171,7 +192,13 @@ public class FillAndUniqueCheck {
             }
             this.count = 0;
 
-            this.createUniqueLevelNew();
+            this.realSolution = this.solutions.get((int) (Math.random() * this.solutions.size()));
+            this.bestStartLevel = null;
+            this.bestClueCount = Integer.MAX_VALUE;
+            this.removalAttempts = 0;
+            this.completedClueChecks = 0;
+            this.level = null;
+            beginClueRemoval();
 
 //            long start = System.nanoTime();
 //            createUniqueLevel();
@@ -223,44 +250,46 @@ public class FillAndUniqueCheck {
         return !visited[y][x];
     }
 
-    private void createUniqueLevelNew() {
+    private void beginClueRemoval() {
+        this.clueRemoval = new UniqueSolution();
+        this.clueRemoval.setValues(this.myBackground, this.realSolution);
+        this.clueRemoval.beginRemoval(this.difficulty);
+    }
 
-        //long start = System.nanoTime();
-        byte[][] realSolution = this.solutions.get((int) (Math.random() * this.solutions.size()));
-        byte[][] startLevel;
-        int counter = 1;
-        byte[][] startLevelBest = null;
-        int min = 100000;
-        int max = (int)(this.difficulty.getValue() * myBackground.length * myBackground[0].length);
-        // Large levels (Uber/Titan) are expensive to generate; don't spend time
-        // trying to hit the exact clue count over and over again.
-        int maxAttempts = (myBackground.length * myBackground[0].length > 45) ? 2 : 10;
-        do {
-            UniqueSolution solution = new UniqueSolution();
-            solution.setValues(this.myBackground, realSolution);
-            startLevel = solution.getStartLevel(this.difficulty);
-            counter += 1;
-            int cur = getSolvedLevelOk(startLevel);
-            if (cur < min || startLevelBest == null) {
-                min = cur;
-                startLevelBest = startLevel;
-            }
-        } while (min != max && counter < maxAttempts);
-        //long end = System.nanoTime();
-
-        //System.out.println("LÖSUNG in "+(end-start)+" ns");
-
-//        System.out.println();
-//        Helper.printArray(this.myBackground);
-//        System.out.println();
-//        Helper.printArray(this.regionSize);
-//        System.out.println();
-//        Helper.printArray(realSolution);
-//        System.out.println();
-//        Helper.printArray(startLevel);
-
-        this.level = new Level(Helper.cloneArray(this.myBackground), Helper.cloneArray(realSolution), Helper.cloneArray(startLevelBest));
+    public boolean stepFill() {
+        if (this.level != null) {
+            return true;
+        }
+        if (!this.clueRemoval.stepRemoval()) {
+            return false;
+        }
+        byte[][] startLevel = this.clueRemoval.getCurrentStartLevel();
+        int clueCount = getSolvedLevelOk(startLevel);
+        if (clueCount < this.bestClueCount) {
+            this.bestClueCount = clueCount;
+            this.bestStartLevel = Helper.cloneArray(startLevel);
+        }
+        this.removalAttempts += 1;
+        int totalCells = this.myBackground.length * this.myBackground[0].length;
+        int targetClues = (int) (this.difficulty.getValue() * totalCells);
+        int maxAttempts = totalCells > 45 ? 1 : 9;
+        if (this.bestClueCount != targetClues && this.removalAttempts < maxAttempts) {
+            this.completedClueChecks += this.clueRemoval.getCompletedChecks();
+            beginClueRemoval();
+            return false;
+        }
+        this.level = new Level(Helper.cloneArray(this.myBackground), Helper.cloneArray(this.realSolution), this.bestStartLevel);
         this.level.setRegion(Helper.cloneArray(this.regionSize));
+        return true;
+    }
+
+    public int getCompletedClueChecks() {
+        return this.completedClueChecks + (this.clueRemoval == null ? 0 : this.clueRemoval.getCompletedChecks());
+    }
+
+    public int getRemainingClues() {
+        int removed = this.clueRemoval == null ? 0 : this.clueRemoval.getRemovedValues();
+        return this.myBackground.length * this.myBackground[0].length - removed;
     }
 
     private int getSolvedLevelOk(byte[][] startLevel) {

@@ -16,6 +16,7 @@ import com.apogames.settler.level.helper.Difficulty;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 
 import java.util.ArrayList;
@@ -37,7 +38,7 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
     public static final String FUNCTION_FINISH_NEW_LEVEL = "TIWANAKU_FINISH_NEW_LEVEL";
     public static final String FUNCTION_FINISH_RESTART = "TIWANAKU_FINISH_RESTART";
 
-    public static final int HINT_VALUE_COUNT = 5;
+    public static final int HINT_VALUE_COUNT = 9;
     public static final int HUD_BUBBLE_SIZE = 80;
     public static final int HUD_BUBBLE_SPACING = 10;
     public static final int HUD_BUBBLE_START_Y = 170;
@@ -51,7 +52,8 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
     private static final int HUD_CLICK_HINT_Y = 540;
 
     public static final String[] FUNCTION_HINT = {
-            "TIWANAKU_HINT_1", "TIWANAKU_HINT_2", "TIWANAKU_HINT_3", "TIWANAKU_HINT_4", "TIWANAKU_HINT_5"
+            "TIWANAKU_HINT_1", "TIWANAKU_HINT_2", "TIWANAKU_HINT_3", "TIWANAKU_HINT_4", "TIWANAKU_HINT_5",
+            "TIWANAKU_HINT_6", "TIWANAKU_HINT_7", "TIWANAKU_HINT_8", "TIWANAKU_HINT_9"
     };
 
     private final boolean[] keys = new boolean[256];
@@ -63,6 +65,7 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
     private Level level;
 
     private LevelSize levelSize = LevelSize.SMALL;
+    private int maxRegionSize = 5;
 
     private boolean newLevel = false;
 
@@ -148,8 +151,13 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
     }
 
     public void setValues(LevelSize levelSize, boolean newLevel, Difficulty difficulty) {
+        setValues(levelSize, newLevel, difficulty, 5);
+    }
+
+    public void setValues(LevelSize levelSize, boolean newLevel, Difficulty difficulty, int maxRegionSize) {
         this.levelSize = levelSize;
-        this.newLevel = newLevel;
+        this.newLevel = newLevel || this.maxRegionSize != maxRegionSize;
+        this.maxRegionSize = maxRegionSize;
         this.difficulty = difficulty;
     }
 
@@ -177,7 +185,7 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
     }
 
     private void createNewLevel() {
-        this.levelCreate = new NewLevelCreate(this.difficulty);
+        this.levelCreate = new NewLevelCreate(this.difficulty, this.maxRegionSize);
         this.levelCreate.beginGeneration(this.levelSize.getX(), this.levelSize.getY(), this.levelSize.getFiveCount(), this.levelSize.getFourCount());
         this.level = null;
         this.generating = true;
@@ -283,6 +291,21 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
         }
         int regionSize = this.level.getRegion()[this.selectedY][this.selectedX];
         return Math.min(regionSize, HINT_VALUE_COUNT);
+    }
+
+    private void layoutHintButtons() {
+        boolean expanded = getSelectedRegionSize() > 5;
+        int size = expanded ? 52 : HUD_BUBBLE_SIZE;
+        float hudStartX = Constants.GAME_WIDTH - 5 - AssetLoader.hudRightTextureRegion.getRegionWidth();
+        float groupWidth = expanded ? size * 3 + HUD_BUBBLE_SPACING * 2 : size;
+        float startX = hudStartX + (AssetLoader.hudRightTextureRegion.getRegionWidth() - groupWidth) / 2f;
+        for (int index = 0; index < FUNCTION_HINT.length; index++) {
+            ApoButton button = getMainPanel().getButtonByFunction(FUNCTION_HINT[index]);
+            button.setWidth(size);
+            button.setHeight(size);
+            button.setX(startX + (expanded ? index % 3 * (size + HUD_BUBBLE_SPACING) : 0));
+            button.setY(HUD_BUBBLE_START_Y + (expanded ? index / 3 : index) * (size + HUD_BUBBLE_SPACING));
+        }
     }
 
     private void handleNormalGridClick(int x, int y, boolean isRightButton) {
@@ -482,6 +505,7 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
 
     @Override
     public void render() {
+        layoutHintButtons();
         getMainPanel().getRenderer().begin(ShapeRenderer.ShapeType.Filled);
 
         getMainPanel().getRenderer().setColor(Constants.COLOR_PURPLE_MENU[0], Constants.COLOR_PURPLE_MENU[1], Constants.COLOR_PURPLE_MENU[2], 1f);
@@ -554,7 +578,8 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
             getMainPanel().spriteBatch.begin();
             for (int x = 0; x < cols; x++) {
                 if (this.level.getCurNumber()[y][x] > 0) {
-                    getMainPanel().spriteBatch.draw(AssetLoader.circlesTextureRegion[this.level.getCurNumber()[y][x] - 1], x * tileSizeWidth + addX + addXScale + tileSizeWidth/2f - AssetLoader.circlesTextureRegion[this.level.getCurNumber()[y][x] - 1].getRegionWidth()*scale/2f, addY + y * tileSizeWidth + tileSizeWidth/2f - AssetLoader.circlesTextureRegion[this.level.getCurNumber()[y][x] - 1].getRegionHeight()*scale/2f, AssetLoader.circlesTextureRegion[this.level.getCurNumber()[y][x] - 1].getRegionWidth()*scale, AssetLoader.circlesTextureRegion[this.level.getCurNumber()[y][x] - 1].getRegionHeight()*scale);
+                    TextureRegion numberTexture = AssetLoader.numberTextureRegion[this.level.getCurNumber()[y][x] - 1];
+                    getMainPanel().spriteBatch.draw(numberTexture, x * tileSizeWidth + addX + addXScale + tileSizeWidth/2f - numberTexture.getRegionWidth()*scale/2f, addY + y * tileSizeWidth + tileSizeWidth/2f - numberTexture.getRegionHeight()*scale/2f, numberTexture.getRegionWidth()*scale, numberTexture.getRegionHeight()*scale);
 
                     if (this.level.getStartLevel()[y][x] > 0 && !Constants.IS_MOBILE) {
                         getMainPanel().spriteBatch.draw(AssetLoader.circlesTextureRegion[5], x * tileSizeWidth + addX + addXScale + tileSizeWidth/2f - AssetLoader.circlesTextureRegion[5].getRegionWidth()*scale/2f, addY + y * tileSizeWidth + tileSizeWidth/2f - AssetLoader.circlesTextureRegion[5].getRegionHeight()*scale/2f, AssetLoader.circlesTextureRegion[5].getRegionWidth()*scale, AssetLoader.circlesTextureRegion[5].getRegionHeight()*scale);
@@ -566,8 +591,18 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
                     }
                     getMainPanel().drawString(String.valueOf(this.level.getCurNumber()[y][x]), x * tileSizeWidth + addX + addXScale + tileSizeWidth/2f, addY + y * tileSizeWidth + tileSizeWidth/2f + 4, color, numberFont, DrawString.MIDDLE, true, false);
                 } else if (this.level.getBackground()[y][x] > 0) {
-                    for (int value = 1; value <= HINT_VALUE_COUNT; value++) {
+                    for (int value = 1; value <= this.level.getRegion()[y][x]; value++) {
                         if (!this.level.hasHint(x, y, value)) {
+                            continue;
+                        }
+                        TextureRegion hintTexture = AssetLoader.numberTextureRegion[value - 1];
+                        if (this.level.getRegion()[y][x] > 5) {
+                            float spacing = tileSizeWidth / 3f;
+                            float hintSize = spacing - 2;
+                            float hintX = x * tileSizeWidth + addX + addXScale + (value - 1) % 3 * spacing + 1;
+                            float hintY = addY + y * tileSizeWidth + (value - 1) / 3 * spacing + 1;
+                            getMainPanel().spriteBatch.draw(hintTexture, hintX, hintY, hintSize, hintSize);
+                            getMainPanel().drawString(String.valueOf(value), hintX + hintSize / 2f, hintY + hintSize / 2f + 2, Constants.COLOR_BLACK, AssetLoader.font15, DrawString.MIDDLE, true, false);
                             continue;
                         }
                         int addValueX = (value - 1) * tileSizeWidth/4 + 10;
@@ -578,7 +613,7 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
                         if (value > 3) {
                             addValueY += tileSizeWidth/4;
                         }
-                        getMainPanel().spriteBatch.draw(AssetLoader.circlesTextureRegion[value-1], x * tileSizeWidth + addX + addXScale + addValueX, addY + addValueY + y * tileSizeWidth + tileSizeWidth/2f - AssetLoader.circlesTextureRegion[value].getRegionHeight()/2f, AssetLoader.circlesTextureRegion[value].getRegionWidth()/2f, AssetLoader.circlesTextureRegion[value].getRegionHeight()/2f);
+                        getMainPanel().spriteBatch.draw(hintTexture, x * tileSizeWidth + addX + addXScale + addValueX, addY + addValueY + y * tileSizeWidth + tileSizeWidth/2f - hintTexture.getRegionHeight()/2f, hintTexture.getRegionWidth()/2f, hintTexture.getRegionHeight()/2f);
                     }
                 }
             }
@@ -626,6 +661,9 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
         }
         getMainPanel().spriteBatch.end();
         this.generationStatusRendered = true;
+        if (this.generating) {
+            Gdx.graphics.requestRendering();
+        }
     }
 
     private void renderHudContent(float hudStartX) {

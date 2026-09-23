@@ -24,6 +24,8 @@ public class Menu extends SequentiallyThinkingScreenModel {
     public static final String FUNCTION_LEVEL_RIGHT = "MENU_LEVEL_RIGHT";
     public static final String FUNCTION_DIFFICULTY_LEFT = "MENU_DIFFICULTY_LEFT";
     public static final String FUNCTION_DIFFICULTY_RIGHT = "MENU_DIFFICULTY_RIGHT";
+    public static final String FUNCTION_REGION_LEFT = "MENU_REGION_LEFT";
+    public static final String FUNCTION_REGION_RIGHT = "MENU_REGION_RIGHT";
 
     public static final String FUNCTION_LANGUAGE = "MENU_LANGUAGE";
 
@@ -38,6 +40,8 @@ public class Menu extends SequentiallyThinkingScreenModel {
 
     private LevelSize levelSize = LevelSize.SMALL;
     private LevelSize oldLevelSize = LevelSize.SMALL;
+    private int maxRegionSize = 5;
+    private int oldMaxRegionSize = 5;
 
     public Menu(final MainPanel game) {
         super(game);
@@ -51,6 +55,8 @@ public class Menu extends SequentiallyThinkingScreenModel {
         getMainPanel().getButtonByFunction(FUNCTION_LEVEL_RIGHT).setVisible(true);
         getMainPanel().getButtonByFunction(FUNCTION_DIFFICULTY_LEFT).setVisible(true);
         getMainPanel().getButtonByFunction(FUNCTION_DIFFICULTY_RIGHT).setVisible(true);
+        getMainPanel().getButtonByFunction(FUNCTION_REGION_LEFT).setVisible(true);
+        getMainPanel().getButtonByFunction(FUNCTION_REGION_RIGHT).setVisible(true);
         getMainPanel().getButtonByFunction(FUNCTION_ALGORITHM).setVisible(true);
     }
 
@@ -67,6 +73,7 @@ public class Menu extends SequentiallyThinkingScreenModel {
 
         this.oldLevelSize = this.levelSize;
         this.oldDifficulty = this.difficulty;
+        this.oldMaxRegionSize = this.maxRegionSize;
 
         this.setNeededButtonsVisible();
         this.setButtonsVisibility();
@@ -115,7 +122,9 @@ public class Menu extends SequentiallyThinkingScreenModel {
                 quit();
                 break;
             case Menu.FUNCTION_PLAY:
-                getMainPanel().changeToGame(this.levelSize, this.oldLevelSize != this.levelSize || !this.difficulty.equals(this.oldDifficulty), this.difficulty);
+                getMainPanel().changeToGame(this.levelSize, this.oldLevelSize != this.levelSize
+                    || !this.difficulty.equals(this.oldDifficulty) || this.oldMaxRegionSize != this.maxRegionSize,
+                    this.difficulty, this.maxRegionSize);
                 break;
             case Menu.FUNCTION_LEVEL_LEFT:
                 this.levelSize = this.levelSize.next(-1);
@@ -131,6 +140,12 @@ public class Menu extends SequentiallyThinkingScreenModel {
                 break;
             case Menu.FUNCTION_ALGORITHM:
                 getMainPanel().changeToAlgorithm();
+                break;
+            case Menu.FUNCTION_REGION_LEFT:
+                this.maxRegionSize = this.maxRegionSize == 5 ? 9 : this.maxRegionSize - 1;
+                break;
+            case Menu.FUNCTION_REGION_RIGHT:
+                this.maxRegionSize = this.maxRegionSize == 9 ? 5 : this.maxRegionSize + 1;
                 break;
             case Menu.FUNCTION_LANGUAGE:
                 this.german = !this.german;
@@ -201,6 +216,11 @@ public class Menu extends SequentiallyThinkingScreenModel {
         ApoButton buttonDifficulty = getMainPanel().getButtonByFunction(FUNCTION_DIFFICULTY_LEFT);
         getMainPanel().drawString(Localization.getInstance().getCommon().get("menu_difficulty"), Constants.GAME_WIDTH/2f, buttonDifficulty.getY() - 20, Constants.COLOR_WHITE, AssetLoader.font25, DrawString.MIDDLE, true, false);
         getMainPanel().drawString(this.difficulty.toString(), Constants.GAME_WIDTH/2f, buttonDifficulty.getY() + buttonDifficulty.getHeight()/2 + 3, Constants.COLOR_WHITE, AssetLoader.font30, DrawString.MIDDLE, true, false);
+
+        ApoButton buttonRegion = getMainPanel().getButtonByFunction(FUNCTION_REGION_LEFT);
+        getMainPanel().drawString(Localization.getInstance().getCommon().get("menu_max_region"), Constants.GAME_WIDTH/2f, buttonRegion.getY() - 20, Constants.COLOR_WHITE, AssetLoader.font25, DrawString.MIDDLE, true, false);
+        String maximum = this.maxRegionSize == 5 ? Localization.getInstance().getCommon().get("menu_default_region") : String.valueOf(this.maxRegionSize);
+        getMainPanel().drawString(maximum, Constants.GAME_WIDTH/2f, buttonRegion.getY() + buttonRegion.getHeight()/2 + 3, Constants.COLOR_WHITE, AssetLoader.font25, DrawString.MIDDLE, true, false);
 
         getMainPanel().drawString("Version: "+Constants.VERSION, Constants.GAME_WIDTH/2f, Constants.GAME_HEIGHT - 20, Constants.COLOR_BLACK, AssetLoader.font15, DrawString.MIDDLE, false, false);
 

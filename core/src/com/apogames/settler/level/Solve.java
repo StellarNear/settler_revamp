@@ -271,7 +271,7 @@ public class Solve {
 
     private ArrayList<byte[][]> guessTheNumber(byte[][] saveSpots, int max, Difficulty difficulty) {
         GridPoint2 point = new GridPoint2(-1,-1);
-        int min = 6;
+        int min = Integer.MAX_VALUE;
         for (int y = 0; y < saveSpots.length; y++) {
             for (int x = 0; x < saveSpots[0].length; x++) {
                 if (saveSpots[y][x] == 0 && this.possibleValues[y][x].getPossibleValues().size() > 1) {

@@ -1,4 +1,6 @@
 # Tiwanaku
+# to launch :
+C:\Users\ho.jchatron\Documents\local_bin\jdk-17.0.20.1\bin\java.exe -classpath gradle\wrapper\gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain :teavm:run
 
 **Explore ancient lands and uncover hidden resources through pure logic!**
 
@@ -25,9 +27,11 @@ Every level is generated on the fly — you will never run out of content. Each 
 
 ## Fit Every Skill Level
 
-- **5 board sizes:** from a relaxing 3×3 grid to brain-bending 9×5 challenges
+- **7 board sizes:** from a relaxing 3x3 grid to UBER (15x10) and TITAN (20x12)
 - **3 difficulty settings:** Easy, Medium, and Hard
-- **15 combinations** for every mood: a quick coffee break or a deep thinking session
+- **Maximum Region Size:** Default (5), 6, 7, 8, or 9, selected with the arrows below Difficulty. This is an upper limit; a board can contain smaller regions too.
+
+During generation, the black status text reports completed clue checks and the number of clues remaining. These are actual counts, not an estimated percentage. The display updates between checks; a difficult individual check can take longer. Changing the maximum region size creates a new puzzle when you press Play.
 
 ## Features
 

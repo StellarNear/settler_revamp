@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2005-2013 Dirk Aporius <dirk.aporius@gmail.com>
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -12,7 +12,7 @@
  *    documentation and/or other materials provided with the distribution.
  * 3. The name of the author may not be used to endorse or promote products
  *    derived from this software without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
  * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
  * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
@@ -82,7 +82,7 @@ public class ButtonProvider {
 			width = 164;
 			height = 80;
 			x = Constants.GAME_WIDTH/2 - width/2;
-			y = Constants.GAME_HEIGHT/2 + 110 + 50;
+			y = Constants.GAME_HEIGHT/2 + 215;
 			button = new ApoButtonImageThree(x, y, width, height, function, text, 0, 0, width, height, Constants.COLOR_CLEAR, "button_play");
 			//ApoButtonColor(x, y, width, height, function, text, Constants.COLOR_BACKGROUND, Constants.COLOR_WHITE);
 			button.setStroke(1);
@@ -154,6 +154,16 @@ public class ButtonProvider {
 			button.setFont(AssetLoader.font30);
 			this.game.getButtons().add(button);
 
+
+			String[] regionFunctions = {Menu.FUNCTION_REGION_LEFT, Menu.FUNCTION_REGION_RIGHT};
+			for (int side = 0; side < regionFunctions.length; side++) {
+				x = side == 0 ? Constants.GAME_WIDTH/2 - 64 - addValue : Constants.GAME_WIDTH/2 + addValue;
+				y = Constants.GAME_HEIGHT/2 + 110;
+				button = new ApoButtonImageWithThree(x, y, 64, 64, regionFunctions[side], "",
+						side == 0 ? AssetLoader.buttonLeftTextureRegion : AssetLoader.buttonRightTextureRegion);
+				button.setFont(AssetLoader.font30);
+				this.game.getButtons().add(button);
+			}
 
 			text = "new Level";
 			function = Tiwanaku.FUNCTION_NEW_LEVEL;

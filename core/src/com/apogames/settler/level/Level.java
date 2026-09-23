@@ -10,7 +10,7 @@ public class Level {
     private byte[][] curNumber;
     private byte[][] curBackground;
     private byte[][] region;
-    private byte[][] hints;
+    private int[][] hints;
 
     public Level(byte[][] background, byte[][] numbers, byte[][] startLevel) {
         this.background = background;
@@ -22,7 +22,7 @@ public class Level {
 
     public void init() {
         this.curNumber = Helper.cloneArray(startLevel);
-        this.hints = new byte[startLevel.length][startLevel[0].length];
+        this.hints = new int[startLevel.length][startLevel[0].length];
 
         this.curBackground = Helper.cloneArray(startLevel);
         for (int y = 0; y < this.curBackground.length; y++) {
@@ -62,7 +62,7 @@ public class Level {
         this.region = region;
     }
 
-    public byte[][] getHints() {
+    public int[][] getHints() {
         return hints;
     }
 
@@ -194,6 +194,6 @@ public class Level {
 
     public void restart() {
         this.curNumber = Helper.cloneArray(this.startLevel);
-        this.hints = new byte[this.startLevel.length][this.startLevel[0].length];
+        this.hints = new int[this.startLevel.length][this.startLevel[0].length];
     }
 }

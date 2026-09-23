@@ -18,6 +18,8 @@ public class NewLevelCreate {
     private Level level;
 
     private Difficulty difficulty;
+    private final int maxRegionSize;
+    private FillAndUniqueCheck pendingFill;
 
     // State for the step-based generation API (see beginGeneration/stepGeneration),
     // which lets a caller spread attempts across multiple frames instead of
@@ -54,6 +56,14 @@ public class NewLevelCreate {
     }
 
     public NewLevelCreate(Difficulty difficulty) {
+        this(difficulty, 5);
+    }
+
+    public NewLevelCreate(Difficulty difficulty, int maxRegionSize) {
+        if (maxRegionSize < 5 || maxRegionSize > 9) {
+            throw new IllegalArgumentException("Maximum region size must be between 5 and 9");
+        }
+        this.maxRegionSize = maxRegionSize;
         this.difficulty = difficulty;
     }
 
@@ -80,7 +90,7 @@ public class NewLevelCreate {
             //Helper.printArray(this.myBackground);
             //System.out.println();
 
-            FillAndUniqueCheck fill = new FillAndUniqueCheck(this.difficulty);
+            FillAndUniqueCheck fill = new FillAndUniqueCheck(this.difficulty, this.maxRegionSize);
             if (fill.fillLevel(myBackground, this.generatedSolution)) {
                 this.level = fill.getLevel();
                 this.finished = true;
@@ -107,10 +117,11 @@ public class NewLevelCreate {
         this.genSuccess = false;
         this.genFailed = false;
         this.genBackgroundReady = false;
+        this.pendingFill = null;
     }
 
     /**
-     * Perform up to {@code attemptsThisStep} generation attempts.
+    * Perform up to {@code attemptsThisStep} generation steps.
      *
      * @return true once generation has finished, either successfully or because
      *         the retry budget was exhausted (see {@link #isGenerationSuccessful()}).
@@ -119,7 +130,17 @@ public class NewLevelCreate {
         if (!this.genActive) {
             return true;
         }
-        for (int i = 0; i < attemptsThisStep && (this.genBackgroundReady || this.genAttemptCount < this.genMaxRetries); i++) {
+        for (int i = 0; i < attemptsThisStep && (this.pendingFill != null || this.genBackgroundReady || this.genAttemptCount < this.genMaxRetries); i++) {
+            if (this.pendingFill != null) {
+                if (!this.pendingFill.stepFill()) {
+                    return false;
+                }
+                this.level = this.pendingFill.getLevel();
+                this.finished = true;
+                this.genSuccess = true;
+                this.genActive = false;
+                return true;
+            }
             if (!this.genBackgroundReady) {
                 this.genAttemptCount += 1;
                 if (!this.setBackground(this.genXSize, this.genYSize, this.genFiveCount, this.genFourCount)) {
@@ -129,14 +150,11 @@ public class NewLevelCreate {
                 return false;
             }
 
-            FillAndUniqueCheck fill = new FillAndUniqueCheck(this.difficulty);
+            FillAndUniqueCheck fill = new FillAndUniqueCheck(this.difficulty, this.maxRegionSize);
             this.genBackgroundReady = false;
-            if (fill.fillLevel(myBackground, this.generatedSolution)) {
-                this.level = fill.getLevel();
-                this.finished = true;
-                this.genSuccess = true;
-                this.genActive = false;
-                return true;
+            if (fill.beginFill(myBackground, this.generatedSolution)) {
+                this.pendingFill = fill;
+                return false;
             }
         }
         if (this.genAttemptCount >= this.genMaxRetries) {
@@ -164,11 +182,15 @@ public class NewLevelCreate {
     }
 
     public int getFailedAttemptCount() {
-        return this.genSuccess || this.genBackgroundReady ? this.genAttemptCount - 1 : this.genAttemptCount;
+        return this.genSuccess || this.genBackgroundReady || this.pendingFill != null ? this.genAttemptCount - 1 : this.genAttemptCount;
     }
 
     public String getGenerationStatus() {
-        return this.genBackgroundReady ? "Removing clues and checking solutions..." : "Building and shaping regions...";
+        if (this.pendingFill != null) {
+            return "Clue checks: " + this.pendingFill.getCompletedClueChecks()
+                    + "   |   Clues remaining: " + this.pendingFill.getRemainingClues();
+        }
+        return this.genBackgroundReady ? "Finding and checking a solution..." : "Building and shaping regions...";
     }
 
     public int getMaxRetries() {
@@ -222,6 +244,15 @@ public class NewLevelCreate {
                     }
                 }
             } else {
+                if (this.maxRegionSize > 5) {
+                    int largerRegions = Math.max(1, xSize * ySize / (this.maxRegionSize * 2));
+                    for (int regionIndex = 0; regionIndex < largerRegions; regionIndex++) {
+                        int size = 6 + (int) (Math.random() * (this.maxRegionSize - 5));
+                        if (setInFive(startCount, size, visited, background)) {
+                            startCount += 1;
+                        }
+                    }
+                }
                 for (int countFive = 0; countFive < fiveCount; countFive++) {
                     if (setInFive(startCount, 5, visited, background)) {
                         startCount += 1;
@@ -365,7 +396,7 @@ public class NewLevelCreate {
             int targetRegion = this.myBackground[targetY][targetX];
             int sourceSize = sizes[sourceRegion];
             int targetSize = sizes[targetRegion];
-            if (sourceRegion == targetRegion || sourceSize <= 1 || targetSize >= 5
+            if (sourceRegion == targetRegion || sourceSize <= 1 || targetSize >= this.maxRegionSize
                     || solution[sourceY][sourceX] != sourceSize
                     || !Helper.canPlaceValue(sourceX, sourceY, targetSize + 1, solution)) {
                 continue;
@@ -414,7 +445,7 @@ public class NewLevelCreate {
                 if (this.regionSize[y][x] == 0) {
                     boolean[][] visited = new boolean[myBackground.length][myBackground[0].length];
                     this.regionSize[y][x] = getRegionSize(x, y, myBackground[y][x], myBackground, visited);
-                    if (this.regionSize[y][x] > 5) {
+                    if (this.regionSize[y][x] > this.maxRegionSize) {
                         return false;
                     }
                     if (this.regionSize[y][x] == 0) {

@@ -46,13 +46,13 @@ public class HintBubble extends ApoButton {
 
         screen.spriteBatch.begin();
         screen.spriteBatch.setColor(1f, 1f, 1f, alpha);
-        screen.spriteBatch.draw(AssetLoader.circlesTextureRegion[this.value - 1],
+        screen.spriteBatch.draw(AssetLoader.numberTextureRegion[this.value - 1],
                 this.getX() + changeX, this.getY() + changeY, this.getWidth(), this.getHeight());
         screen.spriteBatch.setColor(1f, 1f, 1f, 1f);
         screen.drawString(String.valueOf(this.value),
                 this.getX() + changeX + this.getWidth() / 2f,
                 this.getY() + changeY + this.getHeight() / 2f + 4,
-                Constants.COLOR_BLACK, AssetLoader.font40, DrawString.MIDDLE, true, false);
+                Constants.COLOR_BLACK, this.getWidth() < 64 ? AssetLoader.font30 : AssetLoader.font40, DrawString.MIDDLE, true, false);
         screen.spriteBatch.end();
 
         if (this.isBOver()) {
