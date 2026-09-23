@@ -89,6 +89,8 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
     private boolean generating = false;
     private boolean generationFailed = false;
     private boolean generationStatusRendered = false;
+    private boolean generationRenderingActive = false;
+    private boolean previousContinuousRendering;
 
     public Tiwanaku(final MainPanel game) {
         super(game);
@@ -170,6 +172,9 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
         if (this.levelCreate == null || this.newLevel) {
             this.createNewLevel();
         }
+        if (this.generating) {
+            startGenerationRendering();
+        }
 
         this.gameState = GameState.PLAY;
         this.getMainPanel().resetSize(Constants.GAME_WIDTH, Constants.GAME_HEIGHT);
@@ -189,6 +194,7 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
         this.levelCreate.beginGeneration(this.levelSize.getX(), this.levelSize.getY(), this.levelSize.getFiveCount(), this.levelSize.getFourCount());
         this.level = null;
         this.generating = true;
+        startGenerationRendering();
         this.generationFailed = false;
         this.generationStatusRendered = false;
         this.gameState = GameState.PLAY;
@@ -196,6 +202,22 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
         this.error = null;
 
         setNeededButtonsVisible();
+    }
+
+    private void startGenerationRendering() {
+        if (!this.generationRenderingActive) {
+            this.previousContinuousRendering = Gdx.graphics.isContinuousRendering();
+            this.generationRenderingActive = true;
+            Gdx.graphics.setContinuousRendering(true);
+        }
+    }
+
+    private void stopGenerationRendering() {
+        if (this.generationRenderingActive) {
+            Gdx.graphics.setContinuousRendering(this.previousContinuousRendering);
+            this.generationRenderingActive = false;
+            Gdx.graphics.requestRendering();
+        }
     }
 
     private void finalizeGeneratedLevel() {
@@ -494,6 +516,7 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
             return;
         }
         this.generating = false;
+        stopGenerationRendering();
         if (this.levelCreate.isGenerationSuccessful()) {
             Gdx.app.log("Tiwanaku", "Level generated (" + this.levelSize.getX() + "x" + this.levelSize.getY() + ") after " + this.levelCreate.getAttemptCount() + " attempt(s)");
             finalizeGeneratedLevel();
@@ -661,9 +684,6 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
         }
         getMainPanel().spriteBatch.end();
         this.generationStatusRendered = true;
-        if (this.generating) {
-            Gdx.graphics.requestRendering();
-        }
     }
 
     private void renderHudContent(float hudStartX) {
@@ -738,5 +758,6 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
 
     @Override
     public void dispose() {
+        stopGenerationRendering();
     }
 }

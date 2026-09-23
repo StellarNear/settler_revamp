@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2005-2017 Dirk Aporius <dirk.aporius@gmail.com>
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -12,7 +12,7 @@
  *    documentation and/or other materials provided with the distribution.
  * 3. The name of the author may not be used to endorse or promote products
  *    derived from this software without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
  * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
  * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
@@ -67,9 +67,11 @@ public abstract class Game implements ApplicationListener {
     @Override
     public void render() {
         if (screen != null) {
+            boolean continuousBeforeThink = Gdx.graphics.isContinuousRendering();
             float deltaTime = Gdx.graphics.getDeltaTime();
             screen.think(deltaTime);
-            if (Constants.IS_HTML && !needsRender) {
+            if (Constants.IS_HTML && !needsRender && !continuousBeforeThink
+                    && !Gdx.graphics.isContinuousRendering()) {
                 return;
             }
             needsRender = false;
