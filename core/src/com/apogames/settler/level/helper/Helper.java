@@ -73,7 +73,7 @@ public class Helper {
         for (int i = 0; i < level.length; i++) {
             StringBuilder s = new StringBuilder();
             for (int j = 0; j < level[0].length; j++) {
-                s.append(level[i][j]);
+                s.append((char) (level[i][j] & 0xFF));
             }
             needed.add(s.toString());
         }

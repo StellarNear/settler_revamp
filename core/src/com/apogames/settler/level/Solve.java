@@ -303,6 +303,9 @@ public class Solve {
                         //this.setPossibleValues(saveSpots);
                         //this.saveSpots = saveSpots;
                         this.addSolution(solution);
+                        if (this.allSolutions.size() > max) {
+                            return this.allSolutions;
+                        }
                     }
                     // this.allSolutions;
                 } else {

@@ -5,7 +5,9 @@ public enum LevelSize {
     MINI(4,4,1,1),
     SMALL(5,5,3,3),
     MEDIUM(7,5,5,3),
-    BIG(9,5,6,5);
+    BIG(9,5,6,5),
+    UBER(15,10,10,25),
+    TITAN(20,12,16,40);
     //SUPERBIG(9,9,6,5);
 
     private final int x;

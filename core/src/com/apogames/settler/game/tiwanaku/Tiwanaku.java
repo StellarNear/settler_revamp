@@ -13,6 +13,7 @@ import com.apogames.settler.level.Level;
 import com.apogames.settler.level.NewLevelCreate;
 import com.apogames.settler.level.Solve;
 import com.apogames.settler.level.helper.Difficulty;
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
@@ -79,11 +80,32 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
 
     private byte[][] error = null;
 
+    // Level generation is spread across frames (see doThink) instead of blocking
+    // the render thread, so large sizes (Uber/Titan) can't freeze the app.
+    private static final int GENERATION_ATTEMPTS_PER_TICK = 1;
+    private boolean generating = false;
+    private boolean generationFailed = false;
+    private boolean generationStatusRendered = false;
+
     public Tiwanaku(final MainPanel game) {
         super(game);
     }
 
     public void setNeededButtonsVisible() {
+        if (this.generating) {
+            getMainPanel().getButtonByFunction(FUNCTION_TIWANAKU_BACK).setVisible(true);
+            getMainPanel().getButtonByFunction(FUNCTION_NEW_LEVEL).setVisible(true);
+            getMainPanel().getButtonByFunction(FUNCTION_RESTART).setVisible(false);
+            getMainPanel().getButtonByFunction(FUNCTION_FIX).setVisible(false);
+            getMainPanel().getButtonByFunction(FUNCTION_HELP).setVisible(false);
+            getMainPanel().getButtonByFunction(FUNCTION_FINISH_BACK).setVisible(false);
+            getMainPanel().getButtonByFunction(FUNCTION_FINISH_RESTART).setVisible(false);
+            getMainPanel().getButtonByFunction(FUNCTION_FINISH_NEW_LEVEL).setVisible(false);
+            for (String fn : FUNCTION_HINT) {
+                getMainPanel().getButtonByFunction(fn).setVisible(false);
+            }
+            return;
+        }
         getMainPanel().getButtonByFunction(FUNCTION_TIWANAKU_BACK).setVisible(true);
         getMainPanel().getButtonByFunction(FUNCTION_RESTART).setVisible(true);
         ApoButton fixButton = getMainPanel().getButtonByFunction(FUNCTION_FIX);
@@ -155,22 +177,30 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
     }
 
     private void createNewLevel() {
-        //this.levelCreate = new NewLevelCreate(this.difficulty);
         this.levelCreate = new NewLevelCreate(this.difficulty);
-
-        this.levelCreate.createLevel(this.levelSize.getX(), this.levelSize.getY(), this.levelSize.getFiveCount(), this.levelSize.getFourCount());
-        this.level = this.levelCreate.getLevel();
-        this.setSolve();
+        this.levelCreate.beginGeneration(this.levelSize.getX(), this.levelSize.getY(), this.levelSize.getFiveCount(), this.levelSize.getFourCount());
+        this.level = null;
+        this.generating = true;
+        this.generationFailed = false;
+        this.generationStatusRendered = false;
         this.gameState = GameState.PLAY;
         this.resetHintState();
         this.error = null;
 
-        this.getMainPanel().getButtonByFunction(FUNCTION_NEW_LEVEL).setVisible(true);
+        setNeededButtonsVisible();
+    }
+
+    private void finalizeGeneratedLevel() {
+        this.level = this.levelCreate.getLevel();
+        this.setSolve();
 
         this.addXScale = (int)((9 - this.level.getBackground()[0].length) * AssetLoader.backgroundTextureRegion[4].getRegionWidth() / 2f);
         if (this.level.getBackground().length > 5) {
             int tileSize = 640 / this.level.getCurNumber().length;
-            this.addXScale = Constants.GAME_WIDTH/2 - AssetLoader.hudRightTextureRegion.getRegionWidth()/2 - (tileSize * this.level.getCurNumber().length)/2;
+            float hudStartX = Constants.GAME_WIDTH - 5 - AssetLoader.hudRightTextureRegion.getRegionWidth();
+            float availableWidth = hudStartX - 20;
+            float gridWidth = tileSize * this.level.getCurNumber()[0].length;
+            this.addXScale = (int)((availableWidth - gridWidth) / 2f - this.addX);
         }
 
         setNeededButtonsVisible();
@@ -199,6 +229,10 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
         this.isPressed = false;
 
         if (this.gameState == GameState.SOLVED) {
+            return;
+        }
+
+        if (this.level == null) {
             return;
         }
 
@@ -428,7 +462,22 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
 
     @Override
     public void doThink(float delta) {
-
+        if (!this.generating || !this.generationStatusRendered) {
+            return;
+        }
+        this.generationStatusRendered = false;
+        boolean done = this.levelCreate.stepGeneration(GENERATION_ATTEMPTS_PER_TICK);
+        if (!done) {
+            return;
+        }
+        this.generating = false;
+        if (this.levelCreate.isGenerationSuccessful()) {
+            Gdx.app.log("Tiwanaku", "Level generated (" + this.levelSize.getX() + "x" + this.levelSize.getY() + ") after " + this.levelCreate.getAttemptCount() + " attempt(s)");
+            finalizeGeneratedLevel();
+        } else {
+            this.generationFailed = true;
+            Gdx.app.log("Tiwanaku", "Level generation FAILED for " + this.levelSize.getX() + "x" + this.levelSize.getY() + " after " + this.levelCreate.getAttemptCount() + " attempt(s)");
+        }
     }
 
     @Override
@@ -450,6 +499,14 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
         getMainPanel().drawString(Constants.PROPERTY_NAME, (Constants.GAME_WIDTH - AssetLoader.hudRightTextureRegion.getRegionWidth())/2f, 44, Constants.COLOR_WHITE, AssetLoader.font30, DrawString.MIDDLE, true, false);
 
         getMainPanel().spriteBatch.end();
+
+        if (this.level == null) {
+            renderGenerationStatus(hudStartX);
+            for (ApoButton button : this.getMainPanel().getButtons()) {
+                button.render(this.getMainPanel());
+            }
+            return;
+        }
 
         int tileSizeWidth = AssetLoader.backgroundTextureRegion[4].getRegionWidth();
         int tileSizeHeight = AssetLoader.backgroundTextureRegion[4].getRegionHeight();
@@ -554,6 +611,22 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
 //			getMainPanel().getRenderer().roundedRectLine((WIDTH - width)/2f, startY, width, height, 5);
 //			getMainPanel().getRenderer().end();
 
+
+    private void renderGenerationStatus(float hudStartX) {
+        getMainPanel().spriteBatch.begin();
+        float centerX = (Constants.GAME_WIDTH - AssetLoader.hudRightTextureRegion.getRegionWidth()) / 2f;
+        float centerY = Constants.GAME_HEIGHT / 2f;
+        if (this.generationFailed) {
+            getMainPanel().drawString("Unable to create this puzzle.", centerX, centerY, Constants.COLOR_BLACK, AssetLoader.font25, DrawString.MIDDLE, false, false);
+            getMainPanel().drawString("Press New Level to try again.", centerX, centerY + 30, Constants.COLOR_BLACK, AssetLoader.font20, DrawString.MIDDLE, false, false);
+        } else {
+            getMainPanel().drawString("Creating your puzzle (" + this.levelSize.getX() + "x" + this.levelSize.getY() + ")...", centerX, centerY, Constants.COLOR_BLACK, AssetLoader.font25, DrawString.MIDDLE, false, false);
+            getMainPanel().drawString(this.levelCreate.getGenerationStatus(), centerX, centerY + 30, Constants.COLOR_BLACK, AssetLoader.font20, DrawString.MIDDLE, false, false);
+            getMainPanel().drawString("Clue checks can take longer on larger boards. Please wait.", centerX, centerY + 60, Constants.COLOR_BLACK, AssetLoader.font20, DrawString.MIDDLE, false, false);
+        }
+        getMainPanel().spriteBatch.end();
+        this.generationStatusRendered = true;
+    }
 
     private void renderHudContent(float hudStartX) {
         if (!this.hintMode) {

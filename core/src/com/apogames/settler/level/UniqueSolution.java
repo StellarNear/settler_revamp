@@ -76,7 +76,15 @@ public class UniqueSolution {
         this.found = false;
         this.difficulty = difficulty;
         //System.out.println(this.difficulty);
-        return getStartLevel(this.background.length * this.background[0].length / 2, 0, this.solution, new byte[this.background.length][this.background[0].length]);
+        int totalCells = this.background.length * this.background[0].length;
+        int deleteValues = totalCells / 2;
+        // For large levels (Uber/Titan) removing half the cells at once makes the
+        // uniqueness check recurse through too many expensive solve attempts.
+        // Start with a smaller chunk so generation finishes quickly.
+        if (totalCells > 45) {
+            deleteValues = Math.max(1, totalCells / 8);
+        }
+        return getStartLevel(deleteValues, 0, this.solution, new byte[this.background.length][this.background[0].length]);
     }
 
     public byte[][] getStartLevel(int deleteValues, int placedValues, byte[][] solution, byte[][] blacklist) {
@@ -112,6 +120,7 @@ public class UniqueSolution {
         ArrayList<byte[][]> solutions = this.solve.tryToSolveLevel(saveSpots, 1, this.difficulty);
         if (solutions.size() != 1) {
             if (deleteValues > 1) {
+                deleteValues = Math.max(1, deleteValues / 2);
                 blacklist = new byte[this.background.length][this.background[0].length];
             }
             return getStartLevel(deleteValues, orgPlacedValues, orgSolution, blacklist);

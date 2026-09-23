@@ -46,6 +46,10 @@ public class FillAndUniqueCheck {
     }
 
     public boolean fillLevel(byte[][] background) {
+        return fillLevel(background, null);
+    }
+
+    public boolean fillLevel(byte[][] background, byte[][] generatedSolution) {
         if (found) {
             return true;
         }
@@ -84,41 +88,45 @@ public class FillAndUniqueCheck {
             maxLevel = 1;
         }
 
-        System.gc();
         //long startTime = System.nanoTime();
 //        this.algorithmX.createMatrix(this.myBackground, numbers, this.regionSize);
 //        AlgorithmXSolve solver = new AlgorithmXSolve();
 //        ArrayList<byte[][]> solutionArray = solver.run(myBackground[0].length, myBackground.length, this.algorithmX.getMatrix(), maxLevel);
 
-        App solver = new App(this.myBackground);
-        ArrayList<byte[][]> solutionArray = solver.run(maxLevel, countAllSolutions);
+        ArrayList<byte[][]> solutionArray;
+        if (generatedSolution == null) {
+            App solver = new App(this.myBackground);
+            solutionArray = solver.run(maxLevel, countAllSolutions);
+        } else {
+            if (generatedSolution.length != background.length) {
+                return false;
+            }
+            for (int row = 0; row < background.length; row++) {
+                if (generatedSolution[row].length != background[row].length) {
+                    return false;
+                }
+            }
+            for (int row = 0; row < background.length; row++) {
+                for (int column = 0; column < background[row].length; column++) {
+                    if (generatedSolution[row][column] < 1
+                            || generatedSolution[row][column] > this.regionSize[row][column]
+                            || !areNumbersValid(generatedSolution, column, row)) {
+                        return false;
+                    }
+                }
+            }
+            isRegionValid(generatedSolution);
+            if (!this.regionCheck) {
+                return false;
+            }
+            solutionArray = new ArrayList<>();
+            solutionArray.add(Helper.cloneArray(generatedSolution));
+        }
 
         //long endTime = System.nanoTime();
         foundSolution = !solutionArray.isEmpty();
         this.solutions = solutionArray;
         //System.out.println("Solutions found: "+this.solutions.size()+" in "+(endTime-startTime)+" ns");
-
-        if (foundSolution && maxLevel == 1) {
-            System.out.println("Level gefunden");
-            do {
-                byte[][] startLevel = Helper.cloneArray(numbers);
-                boolean[][] visited = new boolean[startLevel.length][startLevel[0].length];
-                for (int i = 0; i < 4; i++) {
-                    putInValue(startLevel, visited);
-                }
-
-                //startTime = System.nanoTime();
-                this.algorithmX.createMatrix(this.myBackground, numbers, this.regionSize);
-//                solver = new AlgorithmXSolve();
-//                solutionArray = solver.run(myBackground[0].length, myBackground.length, this.algorithmX.getMatrix(), 10000);
-                solver = new App(this.myBackground);
-                solutionArray = solver.run(100000, countAllSolutions);
-                //endTime = System.nanoTime();
-                foundSolution = !solutionArray.isEmpty();
-                this.solutions = solutionArray;
-                //System.out.println("filled Solutions found: " + this.solutions.size() + " in " + (endTime - startTime) + " ns");
-            } while (!foundSolution);
-        }
 
 //        this.solutions.clear();
 //        byte[][] startLevel = Helper.cloneArray(numbers);
@@ -224,6 +232,9 @@ public class FillAndUniqueCheck {
         byte[][] startLevelBest = null;
         int min = 100000;
         int max = (int)(this.difficulty.getValue() * myBackground.length * myBackground[0].length);
+        // Large levels (Uber/Titan) are expensive to generate; don't spend time
+        // trying to hit the exact clue count over and over again.
+        int maxAttempts = (myBackground.length * myBackground[0].length > 45) ? 2 : 10;
         do {
             UniqueSolution solution = new UniqueSolution();
             solution.setValues(this.myBackground, realSolution);
@@ -234,7 +245,7 @@ public class FillAndUniqueCheck {
                 min = cur;
                 startLevelBest = startLevel;
             }
-        } while (min != max && counter < 10);
+        } while (min != max && counter < maxAttempts);
         //long end = System.nanoTime();
 
         //System.out.println("LÖSUNG in "+(end-start)+" ns");
@@ -538,7 +549,7 @@ public class FillAndUniqueCheck {
     }
 
     private void checkRegion(int x, int y, int region, boolean[][] visitedRegion, byte[][] numbers, ArrayList<Byte> values) {
-        if (isOk(x, y, region, numbers, visitedRegion)) {
+        if (isOk(x, y, region, this.myBackground, visitedRegion)) {
             isRegionValid(x, y, region, visitedRegion, numbers, values);
         }
     }
