@@ -49,7 +49,19 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
     private static final int HUD_TITLE_Y = 130;
     private static final int HUD_INSTRUCTION_Y = 180;
     private static final int HUD_EXIT_Y = 290;
-    private static final int HUD_CLICK_HINT_Y = 540;
+    // The New Level button (see ButtonProvider) covers the banner from y=593 down,
+    // so all HUD text has to stay above it.
+    private static final int HUD_CONTENT_MIN_Y = 534;
+    private static final int HUD_CONTENT_MAX_Y = 578;
+    private static final int HUD_TIME_LABEL_Y = 252;
+    private static final int HUD_TIME_VALUE_Y = 278;
+
+    // Congratulation banner is 300 high and the finish buttons start at y=436,
+    // which leaves room for a title, a subtitle, the resolution time and the stats.
+    private static final int WON_TITLE_OFFSET = 40;
+    private static final int WON_SUBTITLE_OFFSET = 78;
+    private static final int WON_TIME_OFFSET = 108;
+    private static final int WON_STATS_OFFSET = 145;
 
     public static final String[] FUNCTION_HINT = {
             "TIWANAKU_HINT_1", "TIWANAKU_HINT_2", "TIWANAKU_HINT_3", "TIWANAKU_HINT_4", "TIWANAKU_HINT_5",
@@ -90,7 +102,15 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
     private boolean generationFailed = false;
     private boolean generationStatusRendered = false;
     private boolean generationRenderingActive = false;
-    private boolean previousContinuousRendering;
+    private boolean timerRenderingActive = false;
+
+    // Continuous rendering is a shared resource: level generation and the running
+    // timer both need it (the web build otherwise only redraws on input), so they
+    // take a reference instead of saving and restoring the flag themselves.
+    private int continuousRenderingRequests = 0;
+    private boolean continuousRenderingBeforeRequests = true;
+
+    private final GameTimer timer = new GameTimer();
 
     public Tiwanaku(final MainPanel game) {
         super(game);
@@ -177,6 +197,7 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
         }
 
         this.gameState = GameState.PLAY;
+        this.resetTimer();
         this.getMainPanel().resetSize(Constants.GAME_WIDTH, Constants.GAME_HEIGHT);
 
         this.setNeededButtonsVisible();
@@ -200,24 +221,77 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
         this.gameState = GameState.PLAY;
         this.resetHintState();
         this.error = null;
+        this.resetTimer();
 
         setNeededButtonsVisible();
     }
 
     private void startGenerationRendering() {
         if (!this.generationRenderingActive) {
-            this.previousContinuousRendering = Gdx.graphics.isContinuousRendering();
             this.generationRenderingActive = true;
-            Gdx.graphics.setContinuousRendering(true);
+            requestContinuousRendering();
         }
     }
 
     private void stopGenerationRendering() {
         if (this.generationRenderingActive) {
-            Gdx.graphics.setContinuousRendering(this.previousContinuousRendering);
             this.generationRenderingActive = false;
+            releaseContinuousRendering();
+        }
+    }
+
+    private void startTimerRendering() {
+        if (!this.timerRenderingActive) {
+            this.timerRenderingActive = true;
+            requestContinuousRendering();
+        }
+    }
+
+    private void stopTimerRendering() {
+        if (this.timerRenderingActive) {
+            this.timerRenderingActive = false;
+            releaseContinuousRendering();
+        }
+    }
+
+    private void requestContinuousRendering() {
+        if (this.continuousRenderingRequests == 0) {
+            this.continuousRenderingBeforeRequests = Gdx.graphics.isContinuousRendering();
+        }
+        this.continuousRenderingRequests += 1;
+        Gdx.graphics.setContinuousRendering(true);
+    }
+
+    private void releaseContinuousRendering() {
+        if (this.continuousRenderingRequests <= 0) {
+            return;
+        }
+        this.continuousRenderingRequests -= 1;
+        if (this.continuousRenderingRequests > 0) {
+            return;
+        }
+        Gdx.graphics.setContinuousRendering(this.continuousRenderingBeforeRequests);
+        if (!this.continuousRenderingBeforeRequests) {
             Gdx.graphics.requestRendering();
         }
+    }
+
+    private void resetTimer() {
+        this.timer.reset();
+        stopTimerRendering();
+    }
+
+    private void startTimer() {
+        if (this.timer.hasStarted()) {
+            return;
+        }
+        this.timer.start();
+        startTimerRendering();
+    }
+
+    private void stopTimer() {
+        this.timer.stop();
+        stopTimerRendering();
     }
 
     private void finalizeGeneratedLevel() {
@@ -332,8 +406,10 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
 
     private void handleNormalGridClick(int x, int y, boolean isRightButton) {
         if (this.level.getStartLevel()[y][x] > 0) {
+            this.level.registerWastedClick();
             return;
         }
+        this.startTimer();
         this.error = null;
         byte add = (byte) (isRightButton ? -1 : 1);
         this.level.getCurNumber()[y][x] = (byte) (this.level.getCurNumber()[y][x] + add);
@@ -343,6 +419,7 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
         if (this.level.getCurNumber()[y][x] < 0) {
             this.level.getCurNumber()[y][x] = this.level.getRegion()[y][x];
         }
+        this.level.registerValueClick(x, y);
         this.setSolve();
 
         if (this.helpHintX == x && this.helpHintY == y && this.level.getCurNumber()[y][x] != 0) {
@@ -359,6 +436,7 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
 
     private void gameSolved() {
         this.gameState = GameState.SOLVED;
+        this.stopTimer();
         this.resetHintState();
         this.setButtonsVisibility();
 //        this.getMainPanel().getButtonByFunction(FUNCTION_NEW_LEVEL).setVisible(true);
@@ -483,6 +561,7 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
         this.gameState = GameState.PLAY;
         this.resetHintState();
         this.error = null;
+        this.resetTimer();
         this.setNeededButtonsVisible();
     }
 
@@ -528,6 +607,7 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
 
     @Override
     public void render() {
+        this.timer.update(Gdx.graphics.getDeltaTime());
         layoutHintButtons();
         getMainPanel().getRenderer().begin(ShapeRenderer.ShapeType.Filled);
 
@@ -648,9 +728,17 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
             float wonX = (Constants.GAME_WIDTH - AssetLoader.hudRightTextureRegion.getRegionWidth())/2f;
             float wonY = Constants.GAME_HEIGHT/2f - AssetLoader.wonTextureRegion.getRegionHeight()/2f;
             getMainPanel().spriteBatch.draw(AssetLoader.wonTextureRegion, wonX - AssetLoader.wonTextureRegion.getRegionWidth()/2f, wonY);
-            getMainPanel().drawString(Localization.getInstance().getCommon().get("won"), wonX, wonY + 40, Constants.COLOR_BLACK, AssetLoader.font30, DrawString.MIDDLE, false, false);
+            getMainPanel().drawString(Localization.getInstance().getCommon().get("won"), wonX, wonY + WON_TITLE_OFFSET, Constants.COLOR_BLACK, AssetLoader.font30, DrawString.MIDDLE, false, false);
 
-            getMainPanel().drawString(Localization.getInstance().getCommon().get("won_text"), wonX, wonY + 125, Constants.COLOR_WHITE, AssetLoader.font25, DrawString.MIDDLE, false, false);
+            getMainPanel().drawString(Localization.getInstance().getCommon().get("won_text"), wonX, wonY + WON_SUBTITLE_OFFSET, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE, false, false);
+
+            getMainPanel().drawString(Localization.getInstance().getCommon().format("won_time", this.timer.getFormattedTime()), wonX, wonY + WON_TIME_OFFSET, Constants.COLOR_WHITE, AssetLoader.font30, DrawString.MIDDLE, false, false);
+
+            getMainPanel().drawString(Localization.getInstance().getCommon().format("won_stats",
+                    String.valueOf(this.level.getTotalClicks()),
+                    String.valueOf(this.level.getTotalMissClicks()),
+                    String.valueOf(this.level.getAccuracyPercent())),
+                    wonX, wonY + WON_STATS_OFFSET, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE, false, false);
 
             getMainPanel().drawString(Localization.getInstance().getCommon().get("won"), hudStartX + AssetLoader.hudRightTextureRegion.getRegionWidth()/2f, 70, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE, false, false);
             getMainPanel().spriteBatch.end();
@@ -688,38 +776,51 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
 
     private void renderHudContent(float hudStartX) {
         if (!this.hintMode) {
-            int startY = 130;
+            int startY = 128;
             getMainPanel().drawString("Level:", hudStartX + 30, startY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, false, false);
             getMainPanel().drawString(this.levelSize.getX()+"x"+this.levelSize.getY(), hudStartX + 60, startY + 30, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, false, false);
 
-            getMainPanel().drawString(Localization.getInstance().getCommon().get("menu_difficulty")+":", hudStartX + 30, startY + 80, Constants.COLOR_WHITE, AssetLoader.font15, DrawString.BEGIN, false, false);
-            getMainPanel().drawString(this.difficulty.toString(), hudStartX + 60, startY + 110, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, false, false);
+            getMainPanel().drawString(Localization.getInstance().getCommon().get("menu_difficulty")+":", hudStartX + 30, startY + 64, Constants.COLOR_WHITE, AssetLoader.font15, DrawString.BEGIN, false, false);
+            getMainPanel().drawString(this.difficulty.toString(), hudStartX + 60, startY + 94, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, false, false);
 
-            int blockHeaderY = startY + 160;
-            int blockStartY = startY + 190;
+            int blockHeaderY = startY + 180;
+            int blockStartY = startY + 208;
+            int contentBottomY;
             if (hasErrors(this.error)) {
                 getMainPanel().drawString(Localization.getInstance().getCommon().get("hud_help")+":", hudStartX + 30, blockHeaderY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, false, false);
-                drawWrappedHudText(hudStartX, "hud_help_errors", blockStartY);
+                contentBottomY = blockStartY + drawWrappedHudText(hudStartX, "hud_help_errors", blockStartY) * HUD_TEXT_LINE_HEIGHT;
             } else if (this.helpHintX >= 0) {
                 getMainPanel().drawString(Localization.getInstance().getCommon().get("hud_help")+":", hudStartX + 30, blockHeaderY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, false, false);
-                drawWrappedHudText(hudStartX, "hud_help_explanation", blockStartY);
+                contentBottomY = blockStartY + drawWrappedHudText(hudStartX, "hud_help_explanation", blockStartY) * HUD_TEXT_LINE_HEIGHT;
             } else {
                 getMainPanel().drawString(Localization.getInstance().getCommon().get("hud_rules")+":", hudStartX + 30, blockHeaderY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, false, false);
                 int lines1 = drawWrappedHudText(hudStartX, "hud_rule_1", blockStartY);
                 int rule2Y = blockStartY + (lines1 + 1) * HUD_TEXT_LINE_HEIGHT;
-                drawWrappedHudText(hudStartX, "hud_rule_2", rule2Y);
+                int lines2 = drawWrappedHudText(hudStartX, "hud_rule_2", rule2Y);
+                contentBottomY = rule2Y + lines2 * HUD_TEXT_LINE_HEIGHT;
             }
-            drawWrappedHudText(hudStartX, "hud_click_hint", HUD_CLICK_HINT_Y);
-            return;
+            // The rule texts wrap differently per language, so the click hint is
+            // pushed down when needed instead of relying on a fixed offset.
+            int clickHintY = Math.max(HUD_CONTENT_MIN_Y, contentBottomY + HUD_TEXT_LINE_HEIGHT);
+            drawWrappedHudText(hudStartX, "hud_click_hint", Math.min(clickHintY, HUD_CONTENT_MAX_Y));
+        } else {
+            getMainPanel().drawString(
+                    Localization.getInstance().getCommon().get("hud_hint_title"),
+                    hudStartX + HUD_TEXT_LEFT, HUD_TITLE_Y,
+                    Constants.COLOR_WHITE, AssetLoader.font25, DrawString.BEGIN, false, false);
+            if (this.selectedX < 0) {
+                drawWrappedHudText(hudStartX, "hud_hint_instruction", HUD_INSTRUCTION_Y);
+                drawWrappedHudText(hudStartX, "hud_hint_exit", HUD_EXIT_Y);
+            }
         }
-        getMainPanel().drawString(
-                Localization.getInstance().getCommon().get("hud_hint_title"),
-                hudStartX + HUD_TEXT_LEFT, HUD_TITLE_Y,
-                Constants.COLOR_WHITE, AssetLoader.font25, DrawString.BEGIN, false, false);
-        if (this.selectedX < 0) {
-            drawWrappedHudText(hudStartX, "hud_hint_instruction", HUD_INSTRUCTION_Y);
-            drawWrappedHudText(hudStartX, "hud_hint_exit", HUD_EXIT_Y);
-        }
+        renderTimerContent(hudStartX);
+    }
+
+    private void renderTimerContent(float hudStartX) {
+        getMainPanel().drawString(Localization.getInstance().getCommon().get("hud_time")+":", hudStartX + HUD_TEXT_LEFT,
+                HUD_TIME_LABEL_Y, Constants.COLOR_WHITE, AssetLoader.font15, DrawString.BEGIN, false, false);
+        getMainPanel().drawString(this.timer.getFormattedTime(), hudStartX + HUD_TEXT_LEFT,
+                HUD_TIME_VALUE_Y, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, false, false);
     }
 
     private int drawWrappedHudText(float hudStartX, String key, int startY) {
@@ -759,5 +860,6 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
     @Override
     public void dispose() {
         stopGenerationRendering();
+        stopTimerRendering();
     }
 }

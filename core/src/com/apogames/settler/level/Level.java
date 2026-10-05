@@ -11,6 +11,10 @@ public class Level {
     private byte[][] curBackground;
     private byte[][] region;
     private int[][] hints;
+    private int[][] clickCount;
+    private int[][] missCount;
+    private int totalClicks;
+    private int totalMissClicks;
 
     public Level(byte[][] background, byte[][] numbers, byte[][] startLevel) {
         this.background = background;
@@ -23,6 +27,7 @@ public class Level {
     public void init() {
         this.curNumber = Helper.cloneArray(startLevel);
         this.hints = new int[startLevel.length][startLevel[0].length];
+        this.resetClickStats();
 
         this.curBackground = Helper.cloneArray(startLevel);
         for (int y = 0; y < this.curBackground.length; y++) {
@@ -32,6 +37,64 @@ public class Level {
                 }
             }
         }
+    }
+
+    private void resetClickStats() {
+        this.clickCount = new int[this.startLevel.length][this.startLevel[0].length];
+        this.missCount = new int[this.startLevel.length][this.startLevel[0].length];
+        this.totalClicks = 0;
+        this.totalMissClicks = 0;
+    }
+
+    /**
+     * Records a click that changed a tile. The clicks spent on a tile are compared
+     * against the cheapest way of reaching its current value, so a player who
+     * right-clicks straight onto a high value is credited with a perfect entry while
+     * one who walks up through every intermediate value is not.
+     */
+    public void registerValueClick(int x, int y) {
+        this.clickCount[y][x] += 1;
+        this.totalClicks += 1;
+        int miss = this.clickCount[y][x];
+        if (this.region != null) {
+            miss = Math.max(0, this.clickCount[y][x] - getOptimalClickCount(this.curNumber[y][x], this.region[y][x]));
+        }
+        this.totalMissClicks += miss - this.missCount[y][x];
+        this.missCount[y][x] = miss;
+    }
+
+    /**
+     * Records a click that changed nothing, e.g. a click on a pre-filled clue tile.
+     */
+    public void registerWastedClick() {
+        this.totalClicks += 1;
+        this.totalMissClicks += 1;
+    }
+
+    /**
+     * Fewest clicks that can produce a value: either counting up from empty, or
+     * right-clicking down from the tile's region size.
+     */
+    private static int getOptimalClickCount(byte value, byte max) {
+        if (value <= 0) {
+            return 0;
+        }
+        return Math.min(value, max - value + 1);
+    }
+
+    public int getTotalClicks() {
+        return this.totalClicks;
+    }
+
+    public int getTotalMissClicks() {
+        return this.totalMissClicks;
+    }
+
+    public int getAccuracyPercent() {
+        if (this.totalClicks <= 0) {
+            return 100;
+        }
+        return (int) Math.round((this.totalClicks - this.totalMissClicks) * 100.0 / this.totalClicks);
     }
 
     public byte[][] getBackground() {
@@ -195,5 +258,6 @@ public class Level {
     public void restart() {
         this.curNumber = Helper.cloneArray(this.startLevel);
         this.hints = new int[this.startLevel.length][this.startLevel[0].length];
+        this.resetClickStats();
     }
 }

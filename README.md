@@ -39,7 +39,8 @@ During generation, the black status text reports completed clue checks and the n
 - **Error detection:** conflicts are highlighted instantly so you can correct course
 - **Checkpoint system:** fix your progress and return if you want to try a different approach
 - **Charming pixel-art biomes:** desert dunes, lush forests, snowy peaks, ocean shores
-- **Clean, calming interface** — no pop-ups, no timers, no pressure
+- **Relaxing resolution timer:** starts with your first click, stays in the side panel, and shows your total time when the puzzle is solved
+- **Clean, calming interface** — no pop-ups, no pressure
 - **Available in English and German**
 - **Runs entirely offline** — play anywhere, anytime
 
