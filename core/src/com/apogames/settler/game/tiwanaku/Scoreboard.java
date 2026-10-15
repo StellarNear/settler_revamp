@@ -26,6 +26,33 @@ public class Scoreboard {
         pref.flush();
     }
 
+    /**
+     * Updates an existing result in the scoreboard with a new result.
+     * @param oldResult The result to replace
+     * @param newResult The result to replace it with
+     */
+    public void updateResult(GameResult oldResult, GameResult newResult) {
+        Preferences pref = Gdx.app.getPreferences(PREF_NAME);
+        List<GameResult> results = loadResults();
+        
+        // Find and replace the result
+        for (int i = 0; i < results.size(); i++) {
+            GameResult result = results.get(i);
+            // Compare all fields except playerTrigram to find the matching result
+            if (result.getMapSize().equals(oldResult.getMapSize()) &&
+                result.getTimeMillis() == oldResult.getTimeMillis() &&
+                result.getAccuracyPercent() == oldResult.getAccuracyPercent() &&
+                result.getDateMillis() == oldResult.getDateMillis()) {
+                results.set(i, newResult);
+                break;
+            }
+        }
+        
+        String serialized = serialize(results);
+        pref.putString(KEY_RESULTS, serialized);
+        pref.flush();
+    }
+
     public List<GameResult> loadResults() {
         Preferences pref = Gdx.app.getPreferences(PREF_NAME);
         String serialized = pref.getString(KEY_RESULTS, "");
@@ -43,6 +70,8 @@ public class Scoreboard {
             sb.append(r.getAccuracyPercent());
             sb.append("|");
             sb.append(r.getDateMillis());
+            sb.append("|");
+            sb.append(r.getPlayerTrigram());
             if (i < results.size() - 1) {
                 sb.append(";");
             }
@@ -58,13 +87,23 @@ public class Scoreboard {
         String[] entries = data.split(";");
         for (String entry : entries) {
             String[] parts = entry.split("\\|");
-            if (parts.length == 4) {
+            if (parts.length == 5) {
+                // New format: mapSize|timeMillis|accuracyPercent|dateMillis|playerTrigram
+                String mapSize = parts[0];
+                long timeMillis = Long.parseLong(parts[1]);
+                int accuracyPercent = Integer.parseInt(parts[2]);
+                long dateMillis = Long.parseLong(parts[3]);
+                String playerTrigram = parts[4];
+                results.add(new GameResult(mapSize, timeMillis, accuracyPercent, dateMillis, playerTrigram));
+            } else if (parts.length == 4) {
+                // Old format with date: mapSize|timeMillis|accuracyPercent|dateMillis
                 String mapSize = parts[0];
                 long timeMillis = Long.parseLong(parts[1]);
                 int accuracyPercent = Integer.parseInt(parts[2]);
                 long dateMillis = Long.parseLong(parts[3]);
                 results.add(new GameResult(mapSize, timeMillis, accuracyPercent, dateMillis));
             } else if (parts.length == 3) {
+                // Oldest format: mapSize|timeMillis|accuracyPercent
                 String mapSize = parts[0];
                 long timeMillis = Long.parseLong(parts[1]);
                 int accuracyPercent = Integer.parseInt(parts[2]);

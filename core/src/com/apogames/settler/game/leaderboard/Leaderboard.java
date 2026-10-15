@@ -10,6 +10,7 @@ import com.apogames.settler.game.MainPanel;
 import com.apogames.settler.game.menu.Menu;
 import com.apogames.settler.game.tiwanaku.GameResult;
 import com.apogames.settler.game.tiwanaku.Scoreboard;
+import com.apogames.settler.game.leaderboard.PlayerSelectionForEdit;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 
 import java.util.List;
@@ -19,9 +20,11 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
     public static final String FUNCTION_BACK = Menu.FUNCTION_BACK;
     public static final String FUNCTION_RESET = "LEADERBOARD_RESET";
 
-    private final boolean[] keys = new boolean[256];
-
-    private boolean isPressed = false;
+     private final boolean[] keys = new boolean[256];
+     private boolean isPressed = false;
+     private int mouseX = 0;
+     private int mouseY = 0;
+     private GameResult resultToEdit = null;
 
     public Leaderboard(final MainPanel game) {
         super(game);
@@ -56,11 +59,17 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
 
     public void mouseButtonReleased(int mouseX, int mouseY, boolean isRightButton) {
         this.isPressed = false;
+        // Check if click was on a player name to edit it
+        if (!isRightButton) {
+            checkForPlayerNameClick(this.mouseX, this.mouseY);
+        }
     }
 
     public void mousePressed(int x, int y, boolean isRightButton) {
         if (isRightButton && !this.isPressed) {
             this.isPressed = true;
+            this.mouseX = x;
+            this.mouseY = y;
         }
     }
 
@@ -140,14 +149,20 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
             getMainPanel().drawString("Date", tableX + 10, textY, Constants.COLOR_WHITE, AssetLoader.font25, DrawString.BEGIN, true, false);
             getMainPanel().drawString("Size", tableX + 220, textY, Constants.COLOR_WHITE, AssetLoader.font25, DrawString.BEGIN, true, false);
             getMainPanel().drawString("Time", tableX + 360, textY, Constants.COLOR_WHITE, AssetLoader.font25, DrawString.BEGIN, true, false);
-            getMainPanel().drawString("Accuracy", tableX + 500, textY, Constants.COLOR_WHITE, AssetLoader.font25, DrawString.BEGIN, true, false);
+            getMainPanel().drawString("Player", tableX + 470, textY, Constants.COLOR_WHITE, AssetLoader.font25, DrawString.BEGIN, true, false);
+            getMainPanel().drawString("Accuracy", tableX + 580, textY, Constants.COLOR_WHITE, AssetLoader.font25, DrawString.BEGIN, true, false);
 
             float recordY = headerY + headerHeight + 15;
             for (GameResult result : results) {
                 getMainPanel().drawString(result.getFormattedDate(), tableX + 10, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
                 getMainPanel().drawString(result.getMapSize(), tableX + 220, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
                 getMainPanel().drawString(formatTime(result.getTimeMillis()), tableX + 360, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
-                getMainPanel().drawString(result.getAccuracyPercent() + "%", tableX + 500, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
+                String player = result.getPlayerTrigram();
+                if (player == null || player.isEmpty()) {
+                    player = "N/A";
+                }
+                getMainPanel().drawString(player, tableX + 470, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
+                getMainPanel().drawString(result.getAccuracyPercent() + "%", tableX + 580, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
                 recordY += lineHeight;
             }
         }
@@ -164,9 +179,61 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
         long minutes = totalSeconds / 60;
         long seconds = totalSeconds % 60;
         return String.format("%d:%02d", minutes, seconds);
-    }
+     }
 
-    public void drawOverlay() {
+     /**
+      * Checks if the mouse click was on a player name in the leaderboard
+      * and prepares to edit that player's trigram.
+      */
+     private void checkForPlayerNameClick(int clickX, int clickY) {
+         Scoreboard scoreboard = new Scoreboard();
+         List<GameResult> results = scoreboard.loadResults();
+
+         if (results.isEmpty()) {
+             return;
+         }
+
+         float startY = Constants.GAME_HEIGHT / 2f + 120;
+         float lineHeight = 45;
+         float headerY = startY + 10;
+         float headerHeight = 40f;
+         
+         // Column widths and positions (must match render method)
+         final int leftMargin = 10;
+         final int dateWidth = 210; // from 10 to 220
+         final int sizeWidth = 140; // from 220 to 360
+         final int timeWidth = 110; // from 360 to 470
+         final int playerWidth = 110; // from 470 to 580
+         final int accuracyWidth = 70; // from 580 to 650
+         final int tableWidth = leftMargin + dateWidth + sizeWidth + timeWidth + playerWidth + accuracyWidth;
+         final float tableX = Constants.GAME_WIDTH / 2f - tableWidth / 2f;
+
+         float recordY = headerY + headerHeight + 15;
+         for (GameResult result : results) {
+             // Player column bounds
+             float playerX = tableX + leftMargin + dateWidth + sizeWidth + timeWidth;
+             float playerWidthActual = playerWidth; // 110
+             float playerHeight = 20; // Approximate height for text
+
+             if (clickX >= playerX && clickX <= playerX + playerWidthActual &&
+                 clickY >= recordY - 10 && clickY <= recordY + playerHeight) {
+                 // Click was on this player name, prepare to edit
+                 this.resultToEdit = result;
+                 showPlayerSelectionForEdit(result);
+                 return;
+             }
+             recordY += lineHeight;
+         }
+     }
+
+     /**
+      * Shows a player selection screen for editing an existing result's player trigram.
+      */
+     private void showPlayerSelectionForEdit(GameResult resultToEdit) {
+         getMainPanel().changeModel(new PlayerSelectionForEdit(this.getMainPanel(), resultToEdit));
+     }
+
+     public void drawOverlay() {
     }
 
     @Override

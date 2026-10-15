@@ -1,5 +1,5 @@
 # Tiwanaku
-# to launch :
+# to launch on the local environment user this command :
 C:\Users\ho.jchatron\Documents\local_bin\jdk-17.0.20.1\bin\java.exe -classpath gradle\wrapper\gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain :teavm:run
 
 **Explore ancient lands and uncover hidden resources through pure logic!**

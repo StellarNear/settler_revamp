@@ -93,7 +93,7 @@ public class MainPanel extends GameScreen {
     public void saveProperties() {
     }
 
-    private void changeModel(final ScreenModel model) {
+    public void changeModel(final ScreenModel model) {
         if (this.model != null) {
             this.model.dispose();
         }
