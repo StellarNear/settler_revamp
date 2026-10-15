@@ -7,6 +7,7 @@ import com.apogames.settler.backend.GameScreen;
 import com.apogames.settler.backend.ScreenModel;
 import com.apogames.settler.common.Localization;
 import com.apogames.settler.game.algorithm.Algorithm;
+import com.apogames.settler.game.leaderboard.Leaderboard;
 import com.apogames.settler.game.menu.Menu;
 import com.apogames.settler.game.tiwanaku.LevelSize;
 import com.apogames.settler.game.tiwanaku.Tiwanaku;
@@ -21,6 +22,7 @@ public class MainPanel extends GameScreen {
     private Tiwanaku game;
     private Menu menu;
     private Algorithm algorithm;
+    private Leaderboard leaderboard;
 
     //private FPSLogger logger = new FPSLogger();
 
@@ -45,6 +47,9 @@ public class MainPanel extends GameScreen {
         if (this.algorithm == null) {
             this.algorithm = new Algorithm(this);
         }
+        if (this.leaderboard == null) {
+            this.leaderboard = new Leaderboard(this);
+        }
 
         this.changeToMenu();
     }
@@ -59,6 +64,10 @@ public class MainPanel extends GameScreen {
 
     public void changeToAlgorithm() {
         this.changeModel(this.algorithm);
+    }
+
+    public void changeToLeaderboard() {
+        this.changeModel(this.leaderboard);
     }
 
     public void changeToGame(LevelSize levelSize, boolean newLevel, Difficulty difficulty) {

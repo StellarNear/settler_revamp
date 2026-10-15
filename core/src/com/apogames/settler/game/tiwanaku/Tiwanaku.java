@@ -112,6 +112,8 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
 
     private final GameTimer timer = new GameTimer();
 
+    private Scoreboard scoreboard;
+
     public Tiwanaku(final MainPanel game) {
         super(game);
     }
@@ -198,6 +200,7 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
 
         this.gameState = GameState.PLAY;
         this.resetTimer();
+        this.scoreboard = new Scoreboard();
         this.getMainPanel().resetSize(Constants.GAME_WIDTH, Constants.GAME_HEIGHT);
 
         this.setNeededButtonsVisible();
@@ -437,11 +440,22 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
     private void gameSolved() {
         this.gameState = GameState.SOLVED;
         this.stopTimer();
+        this.saveScoreboardResult();
         this.resetHintState();
         this.setButtonsVisibility();
 //        this.getMainPanel().getButtonByFunction(FUNCTION_NEW_LEVEL).setVisible(true);
 //        this.getMainPanel().getButtonByFunction(FUNCTION_RESTART).setVisible(true);
 //        this.getMainPanel().getButtonByFunction(FUNCTION_FIX).setVisible(true);
+    }
+
+    private void saveScoreboardResult() {
+        if (this.level == null || this.scoreboard == null) {
+            return;
+        }
+        String sizeName = this.levelSize.name();
+        long timeMillis = this.timer.getElapsedMillis();
+        int accuracy = this.level.getAccuracyPercent();
+        this.scoreboard.saveResult(new GameResult(sizeName, timeMillis, accuracy, System.currentTimeMillis()));
     }
 
     public void mousePressed(int x, int y, boolean isRightButton) {

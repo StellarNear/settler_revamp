@@ -20,6 +20,7 @@ public class Menu extends SequentiallyThinkingScreenModel {
 
     public static final String FUNCTION_PLAY = "MENU_PLAY";
     public static final String FUNCTION_ALGORITHM = "MENU_ALGORITHM";
+    public static final String FUNCTION_LEADERBOARD = "MENU_LEADERBOARD";
     public static final String FUNCTION_LEVEL_LEFT = "MENU_LEVEL_LEFT";
     public static final String FUNCTION_LEVEL_RIGHT = "MENU_LEVEL_RIGHT";
     public static final String FUNCTION_DIFFICULTY_LEFT = "MENU_DIFFICULTY_LEFT";
@@ -58,6 +59,7 @@ public class Menu extends SequentiallyThinkingScreenModel {
         getMainPanel().getButtonByFunction(FUNCTION_REGION_LEFT).setVisible(true);
         getMainPanel().getButtonByFunction(FUNCTION_REGION_RIGHT).setVisible(true);
         getMainPanel().getButtonByFunction(FUNCTION_ALGORITHM).setVisible(true);
+        getMainPanel().getButtonByFunction(FUNCTION_LEADERBOARD).setVisible(true);
     }
 
     @Override
@@ -140,6 +142,9 @@ public class Menu extends SequentiallyThinkingScreenModel {
                 break;
             case Menu.FUNCTION_ALGORITHM:
                 getMainPanel().changeToAlgorithm();
+                break;
+            case Menu.FUNCTION_LEADERBOARD:
+                getMainPanel().changeToLeaderboard();
                 break;
             case Menu.FUNCTION_REGION_LEFT:
                 this.maxRegionSize = this.maxRegionSize == 5 ? 9 : this.maxRegionSize - 1;
