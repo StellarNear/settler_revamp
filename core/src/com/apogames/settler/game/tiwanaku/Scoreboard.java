@@ -72,6 +72,10 @@ public class Scoreboard {
             sb.append(r.getDateMillis());
             sb.append("|");
             sb.append(r.getPlayerTrigram());
+            sb.append("|");
+            sb.append(r.getTotalClicks());
+            sb.append("|");
+            sb.append(r.getTotalMissClicks());
             if (i < results.size() - 1) {
                 sb.append(";");
             }
@@ -87,8 +91,18 @@ public class Scoreboard {
         String[] entries = data.split(";");
         for (String entry : entries) {
             String[] parts = entry.split("\\|");
-            if (parts.length == 5) {
-                // New format: mapSize|timeMillis|accuracyPercent|dateMillis|playerTrigram
+            if (parts.length == 7) {
+                // New format: mapSize|timeMillis|accuracyPercent|dateMillis|playerTrigram|totalClicks|totalMissClicks
+                String mapSize = parts[0];
+                long timeMillis = Long.parseLong(parts[1]);
+                int accuracyPercent = Integer.parseInt(parts[2]);
+                long dateMillis = Long.parseLong(parts[3]);
+                String playerTrigram = parts[4];
+                int totalClicks = Integer.parseInt(parts[5]);
+                int totalMissClicks = Integer.parseInt(parts[6]);
+                results.add(new GameResult(mapSize, timeMillis, accuracyPercent, dateMillis, playerTrigram, totalClicks, totalMissClicks));
+            } else if (parts.length == 5) {
+                // Old format with date: mapSize|timeMillis|accuracyPercent|dateMillis|playerTrigram
                 String mapSize = parts[0];
                 long timeMillis = Long.parseLong(parts[1]);
                 int accuracyPercent = Integer.parseInt(parts[2]);

@@ -444,7 +444,9 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
         String sizeName = this.levelSize.name();
         long timeMillis = this.timer.getElapsedMillis();
         int accuracy = this.level.getAccuracyPercent();
-        GameResult result = new GameResult(sizeName, timeMillis, accuracy, System.currentTimeMillis());
+        int totalClicks = this.level.getTotalClicks();
+        int totalMissClicks = this.level.getTotalMissClicks();
+        GameResult result = new GameResult(sizeName, timeMillis, accuracy, System.currentTimeMillis(), "", totalClicks, totalMissClicks);
         this.resetHintState();
         getMainPanel().changeModel(new PlayerSelection(this.getMainPanel(), result));
     }

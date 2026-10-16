@@ -6,21 +6,29 @@ public class GameResult {
     private final int accuracyPercent;
     private final long dateMillis;
     private final String playerTrigram;
+    private final int totalClicks;
+    private final int totalMissClicks;
 
     public GameResult(String mapSize, long timeMillis, int accuracyPercent) {
-        this(mapSize, timeMillis, accuracyPercent, 0, "");
+        this(mapSize, timeMillis, accuracyPercent, 0, "", 0, 0);
     }
 
     public GameResult(String mapSize, long timeMillis, int accuracyPercent, long dateMillis) {
-        this(mapSize, timeMillis, accuracyPercent, dateMillis, "");
+        this(mapSize, timeMillis, accuracyPercent, dateMillis, "", 0, 0);
     }
 
     public GameResult(String mapSize, long timeMillis, int accuracyPercent, long dateMillis, String playerTrigram) {
+        this(mapSize, timeMillis, accuracyPercent, dateMillis, playerTrigram, 0, 0);
+    }
+
+    public GameResult(String mapSize, long timeMillis, int accuracyPercent, long dateMillis, String playerTrigram, int totalClicks, int totalMissClicks) {
         this.mapSize = mapSize;
         this.timeMillis = timeMillis;
         this.accuracyPercent = accuracyPercent;
         this.dateMillis = dateMillis;
         this.playerTrigram = playerTrigram;
+        this.totalClicks = totalClicks;
+        this.totalMissClicks = totalMissClicks;
     }
 
     public String getMapSize() {
@@ -41,6 +49,14 @@ public class GameResult {
 
     public String getPlayerTrigram() {
         return playerTrigram;
+    }
+
+    public int getTotalClicks() {
+        return totalClicks;
+    }
+
+    public int getTotalMissClicks() {
+        return totalMissClicks;
     }
 
     public String getFormattedDate() {

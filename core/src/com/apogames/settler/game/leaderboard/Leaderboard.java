@@ -25,6 +25,8 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
      private int mouseX = 0;
      private int mouseY = 0;
      private GameResult resultToEdit = null;
+     private int scrollOffset = 0;
+     private int resultsSize = 0;
 
     public Leaderboard(final MainPanel game) {
         super(game);
@@ -98,6 +100,17 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
     }
 
     public void mouseWheelChanged(int changed) {
+        // changed < 0 = scroll up, > 0 = scroll down (libgdx convention)
+        int maxScroll = Math.max(0, (resultsSize - 5) * lineHeight());
+        if (changed < 0) {
+            scrollOffset = Math.max(0, scrollOffset - lineHeight());
+        } else if (changed > 0) {
+            scrollOffset = Math.min(maxScroll, scrollOffset + lineHeight());
+        }
+    }
+
+    private int lineHeight() {
+        return 45;
     }
 
     @Override
@@ -116,14 +129,15 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
         getMainPanel().getRenderer().rect(0, 0, Constants.GAME_WIDTH, Constants.GAME_HEIGHT);
         getMainPanel().getRenderer().end();
 
-        float startY = Constants.GAME_HEIGHT / 2f + 120;
+        float startY = Constants.GAME_HEIGHT / 2f + 40;
         float lineHeight = 45;
 
         Scoreboard scoreboard = new Scoreboard();
         List<GameResult> results = scoreboard.loadResults();
+        this.resultsSize = results.size();
 
         if (!results.isEmpty()) {
-            float headerY = startY + 10;
+            float headerY = startY + 10 - scrollOffset;
             float headerHeight = 40f;
             float tableWidth = 650f;
             float tableX = Constants.GAME_WIDTH / 2f - tableWidth / 2f;
@@ -140,7 +154,7 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
         if (results.isEmpty()) {
             getMainPanel().drawString("No results yet", Constants.GAME_WIDTH / 2f, Constants.GAME_HEIGHT / 2f, Constants.COLOR_WHITE, AssetLoader.font30, DrawString.MIDDLE, true, false);
         } else {
-            float headerY = startY + 10;
+            float headerY = startY + 10 - scrollOffset;
             float headerHeight = 40f;
             float tableWidth = 650f;
             float tableX = Constants.GAME_WIDTH / 2f - tableWidth / 2f;
@@ -193,7 +207,7 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
              return;
          }
 
-         float startY = Constants.GAME_HEIGHT / 2f + 120;
+         float startY = Constants.GAME_HEIGHT / 2f + 40;
          float lineHeight = 45;
          float headerY = startY + 10;
          float headerHeight = 40f;
@@ -208,9 +222,8 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
          final int tableWidth = leftMargin + dateWidth + sizeWidth + timeWidth + playerWidth + accuracyWidth;
          final float tableX = Constants.GAME_WIDTH / 2f - tableWidth / 2f;
 
-         float recordY = headerY + headerHeight + 15;
-         for (GameResult result : results) {
-             // Player column bounds
+         float recordY = headerY + headerHeight + 15 - scrollOffset;
+         for (GameResult result : results) {             // Player column bounds
              float playerX = tableX + leftMargin + dateWidth + sizeWidth + timeWidth;
              float playerWidthActual = playerWidth; // 110
              float playerHeight = 20; // Approximate height for text
