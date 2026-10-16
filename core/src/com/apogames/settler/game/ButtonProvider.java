@@ -36,6 +36,7 @@ import com.apogames.settler.entity.ApoButtonImageWithThree;
 import com.apogames.settler.entity.HintBubble;
 import com.apogames.settler.game.algorithm.Algorithm;
 import com.apogames.settler.game.leaderboard.Leaderboard;
+import com.apogames.settler.game.leaderboard.PlayerSelection;
 import com.apogames.settler.game.leaderboard.PlayerSelectionForEdit;
 import com.apogames.settler.game.menu.Menu;
 import com.apogames.settler.game.tiwanaku.Tiwanaku;
@@ -301,6 +302,17 @@ public class ButtonProvider {
 			button = new ApoButtonColor(x, y, width, height, function, text, Constants.COLOR_PURPLE, Constants.COLOR_CLEAR);
 			button.setStroke(1);
 			button.setFont(AssetLoader.font40);
+			this.game.getButtons().add(button);
+
+			text = "Confirm";
+			function = PlayerSelection.FUNCTION_CONFIRM;
+			width = 140;
+			height = 48;
+			x = Constants.GAME_WIDTH / 2 - width - 10;
+			y = 30;
+			button = new ApoButtonColor(x, y, width, height, function, text, Constants.COLOR_PURPLE, Constants.COLOR_CLEAR);
+			button.setStroke(1);
+			button.setFont(AssetLoader.font30);
 			this.game.getButtons().add(button);
 
 		text = "Step";

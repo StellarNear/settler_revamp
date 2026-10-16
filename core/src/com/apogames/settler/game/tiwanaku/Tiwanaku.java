@@ -8,6 +8,7 @@ import com.apogames.settler.common.Localization;
 import com.apogames.settler.entity.ApoButton;
 import com.apogames.settler.entity.HintBubble;
 import com.apogames.settler.game.MainPanel;
+import com.apogames.settler.game.leaderboard.PlayerSelection;
 import com.apogames.settler.level.LevelCreate;
 import com.apogames.settler.level.Level;
 import com.apogames.settler.level.NewLevelCreate;
@@ -440,22 +441,12 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
     private void gameSolved() {
         this.gameState = GameState.SOLVED;
         this.stopTimer();
-        this.saveScoreboardResult();
-        this.resetHintState();
-        this.setButtonsVisibility();
-//        this.getMainPanel().getButtonByFunction(FUNCTION_NEW_LEVEL).setVisible(true);
-//        this.getMainPanel().getButtonByFunction(FUNCTION_RESTART).setVisible(true);
-//        this.getMainPanel().getButtonByFunction(FUNCTION_FIX).setVisible(true);
-    }
-
-    private void saveScoreboardResult() {
-        if (this.level == null || this.scoreboard == null) {
-            return;
-        }
         String sizeName = this.levelSize.name();
         long timeMillis = this.timer.getElapsedMillis();
         int accuracy = this.level.getAccuracyPercent();
-        this.scoreboard.saveResult(new GameResult(sizeName, timeMillis, accuracy, System.currentTimeMillis()));
+        GameResult result = new GameResult(sizeName, timeMillis, accuracy, System.currentTimeMillis());
+        this.resetHintState();
+        getMainPanel().changeModel(new PlayerSelection(this.getMainPanel(), result));
     }
 
     public void mousePressed(int x, int y, boolean isRightButton) {
