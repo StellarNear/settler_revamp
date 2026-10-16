@@ -95,13 +95,23 @@ public abstract class ScreenModel implements Disposable {
      * @param character the character
      */
     public void keyButtonReleased(int button, char character) {
-        for (int exitCode : KeyCodes.EXIT) {
-        	if (button == exitCode) {
-        		quit();
-        		break;
-        	}
-        	
-        }
+    	for (int exitCode : KeyCodes.EXIT) {
+    		if (button == exitCode) {
+    			quit();
+    			break;
+    		}
+    		
+    	}
+        // Optional hook
+    }
+
+    /**
+     * Key typed. Called when a Unicode character is entered (e.g. a letter key).
+     * The default implementation does nothing.
+     *
+     * @param character the typed character
+     */
+    public void keyTyped(char character) {
         // Optional hook
     }
 

@@ -61,7 +61,7 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
         this.isPressed = false;
         // Check if click was on a player name to edit it
         if (!isRightButton) {
-            checkForPlayerNameClick(this.mouseX, this.mouseY);
+            checkForPlayerNameClick(mouseX, mouseY);
         }
     }
 

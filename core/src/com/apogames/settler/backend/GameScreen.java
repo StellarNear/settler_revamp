@@ -442,6 +442,7 @@ public class GameScreen implements Screen, InputProcessor {
             if ((int) character != 0) {
                 keyReleasedArray.add((int) character);
             }
+            this.model.keyTyped(character);
         }
         return false;
     }

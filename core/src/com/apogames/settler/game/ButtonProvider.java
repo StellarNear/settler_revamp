@@ -36,6 +36,7 @@ import com.apogames.settler.entity.ApoButtonImageWithThree;
 import com.apogames.settler.entity.HintBubble;
 import com.apogames.settler.game.algorithm.Algorithm;
 import com.apogames.settler.game.leaderboard.Leaderboard;
+import com.apogames.settler.game.leaderboard.PlayerSelectionForEdit;
 import com.apogames.settler.game.menu.Menu;
 import com.apogames.settler.game.tiwanaku.Tiwanaku;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
@@ -269,16 +270,38 @@ public class ButtonProvider {
 		button.setFont(AssetLoader.font40);
 		this.game.getButtons().add(button);
 
-		text = "Reset";
-		function = Leaderboard.FUNCTION_RESET;
-		width = 128;
-		height = 64;
-		x = Constants.GAME_WIDTH - width - 15 - 64 - 10;
-		y = Constants.GAME_HEIGHT - height - 5;
-		button = new ApoButtonColor(x, y, width, height, function, text, Constants.COLOR_PURPLE, Constants.COLOR_CLEAR);
-		button.setStroke(1);
-		button.setFont(AssetLoader.font30);
-		this.game.getButtons().add(button);
+			text = "Reset";
+			function = Leaderboard.FUNCTION_RESET;
+			width = 128;
+			height = 64;
+			x = Constants.GAME_WIDTH - width - 15 - 64 - 10;
+			y = Constants.GAME_HEIGHT - height - 5;
+			button = new ApoButtonColor(x, y, width, height, function, text, Constants.COLOR_PURPLE, Constants.COLOR_CLEAR);
+			button.setStroke(1);
+			button.setFont(AssetLoader.font30);
+			this.game.getButtons().add(button);
+
+			text = "Confirm";
+			function = PlayerSelectionForEdit.FUNCTION_CONFIRM;
+			width = 140;
+			height = 48;
+			x = Constants.GAME_WIDTH / 2 - width - 10;
+			y = 30;
+			button = new ApoButtonColor(x, y, width, height, function, text, Constants.COLOR_PURPLE, Constants.COLOR_CLEAR);
+			button.setStroke(1);
+			button.setFont(AssetLoader.font30);
+			this.game.getButtons().add(button);
+
+			text = "+";
+			function = PlayerSelectionForEdit.FUNCTION_ADD_PLAYER;
+			width = 60;
+			height = 48;
+			x = Constants.GAME_WIDTH / 2 + 10;
+			y = 30;
+			button = new ApoButtonColor(x, y, width, height, function, text, Constants.COLOR_PURPLE, Constants.COLOR_CLEAR);
+			button.setStroke(1);
+			button.setFont(AssetLoader.font40);
+			this.game.getButtons().add(button);
 
 		text = "Step";
 			function = Algorithm.FUNCTION_STEP;
