@@ -564,12 +564,7 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
     }
 
     private void restartLevel() {
-        this.level.restart();
-        this.gameState = GameState.PLAY;
-        this.resetHintState();
-        this.error = null;
-        this.resetTimer();
-        this.setNeededButtonsVisible();
+        createNewLevel();
     }
 
     private void setButtonsVisibility() {
