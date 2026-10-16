@@ -13,6 +13,7 @@ import com.apogames.settler.game.tiwanaku.Scoreboard;
 import com.apogames.settler.game.leaderboard.PlayerSelectionForEdit;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class Leaderboard extends SequentiallyThinkingScreenModel {
@@ -25,8 +26,14 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
      private int mouseX = 0;
      private int mouseY = 0;
      private GameResult resultToEdit = null;
-     private int scrollOffset = 0;
-     private int resultsSize = 0;
+    private int scrollOffset = 0;
+    private int resultsSize = 0;
+    private String filterMapSize = null; // null = all
+    private String filterPlayer = "";
+    private int mapFilterIndex = -1;
+    private int playerFilterIndex = -1;
+    private List<String> mapOptions = new ArrayList<>();
+    private List<String> playerOptions = new ArrayList<>();
 
     public Leaderboard(final MainPanel game) {
         super(game);
@@ -48,6 +55,46 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
     public void keyPressed(int keyCode, char character) {
         super.keyPressed(keyCode, character);
         keys[keyCode] = true;
+    }
+
+    @Override
+    public void keyTyped(char character) {
+        super.keyTyped(character);
+        if (character == 'm' || character == 'M') {
+            cycleMapFilter();
+        } else if (character == 'p' || character == 'P') {
+            cyclePlayerFilter();
+        }
+    }
+
+    private void cycleMapFilter() {
+        // build options lazily
+        Scoreboard sb = new Scoreboard();
+        List<GameResult> all = sb.loadResults();
+        List<String> opts = new ArrayList<>();
+        opts.add(null); // all
+        for (GameResult r : all) {
+            if (!opts.contains(r.getMapSize())) opts.add(r.getMapSize());
+        }
+        mapOptions = opts;
+        mapFilterIndex++;
+        if (mapFilterIndex >= mapOptions.size()) mapFilterIndex = 0;
+        filterMapSize = mapOptions.get(mapFilterIndex);
+    }
+
+    private void cyclePlayerFilter() {
+        Scoreboard sb = new Scoreboard();
+        List<GameResult> all = sb.loadResults();
+        List<String> opts = new ArrayList<>();
+        opts.add("");
+        for (GameResult r : all) {
+            String p = r.getPlayerTrigram();
+            if (p != null && !p.isEmpty() && !opts.contains(p)) opts.add(p);
+        }
+        playerOptions = opts;
+        playerFilterIndex++;
+        if (playerFilterIndex >= playerOptions.size()) playerFilterIndex = 0;
+        filterPlayer = playerOptions.get(playerFilterIndex);
     }
 
     @Override
@@ -134,14 +181,27 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
 
         Scoreboard scoreboard = new Scoreboard();
         List<GameResult> results = scoreboard.loadResults();
-        this.resultsSize = results.size();
+        List<GameResult> filtered = new ArrayList<>();
+        for (GameResult r : results) {
+            if (filterMapSize != null && !filterMapSize.equals(r.getMapSize())) continue;
+            if (!filterPlayer.isEmpty() && (r.getPlayerTrigram() == null || !r.getPlayerTrigram().toLowerCase().contains(filterPlayer.toLowerCase()))) continue;
+            filtered.add(r);
+        }
+        this.resultsSize = filtered.size();
+        long totalTime = 0;
+        double sumAcc = 0;
+        for (GameResult r : filtered) {
+            totalTime += r.getTimeMillis();
+            sumAcc += r.getAccuracyPercent();
+        }
+        double meanAcc = filtered.isEmpty() ? 0 : sumAcc / filtered.size();
+
+        float headerY = startY + 10 - scrollOffset;
+        float headerHeight = 40f;
+        float tableWidth = 650f;
+        float tableX = Constants.GAME_WIDTH / 2f - tableWidth / 2f;
 
         if (!results.isEmpty()) {
-            float headerY = startY + 10 - scrollOffset;
-            float headerHeight = 40f;
-            float tableWidth = 650f;
-            float tableX = Constants.GAME_WIDTH / 2f - tableWidth / 2f;
-
             getMainPanel().getRenderer().begin(ShapeRenderer.ShapeType.Filled);
             getMainPanel().getRenderer().setColor(Constants.COLOR_RED_DARK[0], Constants.COLOR_RED_DARK[1], Constants.COLOR_RED_DARK[2], 1f);
             getMainPanel().getRenderer().rect(tableX, headerY, tableWidth, headerHeight);
@@ -152,13 +212,8 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
         getMainPanel().drawString(Localization.getInstance().getCommon().get("title"), Constants.GAME_WIDTH / 2f, 90, Constants.COLOR_WHITE, AssetLoader.font40, DrawString.MIDDLE, true, false);
 
         if (results.isEmpty()) {
-            getMainPanel().drawString("No results yet", Constants.GAME_WIDTH / 2f, Constants.GAME_HEIGHT / 2f, Constants.COLOR_WHITE, AssetLoader.font30, DrawString.MIDDLE, true, false);
+            getMainPanel().drawString(Localization.getInstance().getCommon().get("leaderboard.no_results"), Constants.GAME_WIDTH / 2f, Constants.GAME_HEIGHT / 2f, Constants.COLOR_WHITE, AssetLoader.font30, DrawString.MIDDLE, true, false);
         } else {
-            float headerY = startY + 10 - scrollOffset;
-            float headerHeight = 40f;
-            float tableWidth = 650f;
-            float tableX = Constants.GAME_WIDTH / 2f - tableWidth / 2f;
-
             float textY = headerY + headerHeight / 2f + 5;
             getMainPanel().drawString("Date", tableX + 10, textY, Constants.COLOR_WHITE, AssetLoader.font25, DrawString.BEGIN, true, false);
             getMainPanel().drawString("Size", tableX + 220, textY, Constants.COLOR_WHITE, AssetLoader.font25, DrawString.BEGIN, true, false);
@@ -167,20 +222,29 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
             getMainPanel().drawString("Accuracy", tableX + 580, textY, Constants.COLOR_WHITE, AssetLoader.font25, DrawString.BEGIN, true, false);
 
             float recordY = headerY + headerHeight + 15;
-            for (GameResult result : results) {
-                getMainPanel().drawString(result.getFormattedDate(), tableX + 10, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
-                getMainPanel().drawString(result.getMapSize(), tableX + 220, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
-                getMainPanel().drawString(formatTime(result.getTimeMillis()), tableX + 360, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
-                String player = result.getPlayerTrigram();
-                if (player == null || player.isEmpty()) {
-                    player = "N/A";
+            if (filtered.isEmpty()) {
+                getMainPanel().drawString(Localization.getInstance().getCommon().get("leaderboard.no_matching"), Constants.GAME_WIDTH / 2f, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.MIDDLE, true, false);
+            } else {
+                for (GameResult result : filtered) {
+                    getMainPanel().drawString(result.getFormattedDate(), tableX + 10, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
+                    getMainPanel().drawString(result.getMapSize(), tableX + 220, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
+                    getMainPanel().drawString(formatTime(result.getTimeMillis()), tableX + 360, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
+                    String player = result.getPlayerTrigram();
+                    if (player == null || player.isEmpty()) {
+                        player = "N/A";
+                    }
+                    getMainPanel().drawString(player, tableX + 470, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
+                    getMainPanel().drawString(result.getAccuracyPercent() + "%", tableX + 580, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
+                    recordY += lineHeight;
                 }
-                getMainPanel().drawString(player, tableX + 470, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
-                getMainPanel().drawString(result.getAccuracyPercent() + "%", tableX + 580, recordY, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
-                recordY += lineHeight;
             }
-        }
 
+            String mapLabel = filterMapSize == null ? Localization.getInstance().getCommon().get("leaderboard.all") : filterMapSize;
+            String playerLabel = filterPlayer.isEmpty() ? Localization.getInstance().getCommon().get("leaderboard.none") : filterPlayer;
+            getMainPanel().drawString(Localization.getInstance().getCommon().get("leaderboard.map") + ": " + mapLabel + "    " + Localization.getInstance().getCommon().get("leaderboard.player") + ": " + playerLabel, tableX, recordY + 20, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
+            getMainPanel().drawString(Localization.getInstance().getCommon().get("leaderboard.mean_accuracy") + ": " + String.format("%.1f", meanAcc) + "%    " + Localization.getInstance().getCommon().get("leaderboard.total_time") + ": " + formatTime(totalTime) + "    (" + filtered.size() + " " + Localization.getInstance().getCommon().get("leaderboard.games") + ")", tableX, recordY + 50, Constants.COLOR_WHITE, AssetLoader.font20, DrawString.BEGIN, true, false);
+            getMainPanel().drawString(Localization.getInstance().getCommon().get("leaderboard.hint_keys"), tableX, recordY + 80, Constants.COLOR_GREY_BRIGHT, AssetLoader.font15, DrawString.BEGIN, true, false);
+        }
         getMainPanel().spriteBatch.end();
 
         for (ApoButton button : this.getMainPanel().getButtons()) {
@@ -203,7 +267,7 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
          Scoreboard scoreboard = new Scoreboard();
          List<GameResult> results = scoreboard.loadResults();
 
-         if (results.isEmpty()) {
+        if (results.isEmpty()) {
              return;
          }
 
