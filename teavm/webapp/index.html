@@ -18,17 +18,68 @@
             #canvas {
                 border: none;
             }
+            #loading {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: #000;
+                color: #fff;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                z-index: 10000;
+                font-family: sans-serif;
+                transition: opacity 0.3s ease;
+            }
+            #loading.hidden {
+                opacity: 0;
+                pointer-events: none;
+            }
+            #loading .spinner {
+                width: 40px;
+                height: 40px;
+                border: 4px solid #333;
+                border-top: 4px solid #fff;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+                margin-bottom: 20px;
+            }
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            #loading p {
+                margin: 5px 0;
+                font-size: 16px;
+            }
         </style>
     </head>
     <body oncontextmenu="return false">
         <div>
             <canvas id="canvas"></canvas>
         </div>
+        <div id="loading">
+            <div class="spinner"></div>
+            <p>Loading Tiwanaku...</p>
+        </div>
         <script>
             async function start() {
                 main()
             }
             window.addEventListener("load", start);
+
+            function hideLoadingScreen() {
+                var loading = document.getElementById('loading');
+                if (loading) {
+                    loading.classList.add('hidden');
+                }
+            }
+
+            // Expose hideLoadingScreen for the Java/TeaVM side to call
+            window.hideLoadingScreen = hideLoadingScreen;
         </script>
         <script type="text/javascript" charset="utf-8" src="app.js"></script>
     </body>

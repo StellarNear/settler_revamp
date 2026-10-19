@@ -13,9 +13,16 @@ public class Settler extends Game {
 		setScreen(new MainPanel());
 		Gdx.graphics.setContinuousRendering(false);
 		Gdx.graphics.requestRendering();
-//		if (Constants.IS_HTML) {
-//
-//		}
+	}
+
+	@Override
+	public void render() {
+		super.render();
+		// Hide the web loading screen once the first frame has actually been drawn
+		if(Constants.onGameStart != null) {
+			Constants.onGameStart.run();
+			Constants.onGameStart = null;
+		}
 	}
 
 	@Override
