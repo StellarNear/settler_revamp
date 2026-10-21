@@ -85,14 +85,23 @@ public class Menu extends SequentiallyThinkingScreenModel {
     public void keyPressed(int keyCode, char character) {
         super.keyPressed(keyCode, character);
 
-        keys[keyCode] = true;
+        setKeyState(keyCode, true);
     }
 
     @Override
     public void keyButtonReleased(int keyCode, char character) {
         super.keyButtonReleased(keyCode, character);
 
-        keys[keyCode] = false;
+        setKeyState(keyCode, false);
+    }
+
+    /**
+     * Stores the state of a key, key codes which are out of range are ignored.
+     */
+    private void setKeyState(int keyCode, boolean pressed) {
+        if (keyCode >= 0 && keyCode < keys.length) {
+            keys[keyCode] = pressed;
+        }
     }
 
     public void mouseMoved(int mouseX, int mouseY) {

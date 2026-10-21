@@ -10,6 +10,7 @@ import com.apogames.settler.game.MainPanel;
 import com.apogames.settler.game.menu.Menu;
 import com.apogames.settler.game.tiwanaku.GameResult;
 import com.apogames.settler.game.tiwanaku.Scoreboard;
+import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 
 import java.util.ArrayList;
@@ -24,7 +25,8 @@ public class PlayerSelection extends SequentiallyThinkingScreenModel {
     public static final String FUNCTION_CONFIRM = "PLAYER_SELECTION_CONFIRM";
     public static final String FUNCTION_ADD_PLAYER = "PLAYER_SELECTION_ADD";
 
-    private final boolean[] keys = new boolean[256];
+    private static final int MAX_PLAYER_NAME_LENGTH = 3;
+
     private boolean isPressed = false;
     private int mouseX = 0;
     private int mouseY = 0;
@@ -37,6 +39,7 @@ public class PlayerSelection extends SequentiallyThinkingScreenModel {
     private String selectedPlayer = "";
     private String newPlayerInput = "";
     private boolean showingAddPlayer = false;
+    private boolean resultSaved = false;
 
     public PlayerSelection(MainPanel game, GameResult gameResult) {
         super(game);
@@ -67,20 +70,46 @@ public class PlayerSelection extends SequentiallyThinkingScreenModel {
     }
 
     public void setNeededButtonsVisible() {
-        getMainPanel().getButtonByFunction(FUNCTION_BACK).setVisible(true);
-        getMainPanel().getButtonByFunction(FUNCTION_CONFIRM).setVisible(true);
+        setButtonVisible(FUNCTION_BACK);
+        setButtonVisible(FUNCTION_CONFIRM);
+        setButtonVisible(FUNCTION_ADD_PLAYER);
+    }
+
+    private void setButtonVisible(String function) {
+        ApoButton button = getMainPanel().getButtonByFunction(function);
+        if (button != null) {
+            button.setVisible(true);
+        }
     }
 
     @Override
     public void keyPressed(int keyCode, char character) {
         super.keyPressed(keyCode, character);
-        keys[keyCode] = true;
+        if (!showingAddPlayer) {
+            return;
+        }
+        if (keyCode == Input.Keys.BACKSPACE) {
+            if (!newPlayerInput.isEmpty()) {
+                newPlayerInput = newPlayerInput.substring(0, newPlayerInput.length() - 1);
+            }
+        } else if (keyCode == Input.Keys.ENTER) {
+            confirmNewPlayer();
+        }
     }
 
     @Override
-    public void keyButtonReleased(int keyCode, char character) {
-        super.keyButtonReleased(keyCode, character);
-        keys[keyCode] = false;
+    public void keyTyped(char character) {
+        super.keyTyped(character);
+        if (!showingAddPlayer) {
+            return;
+        }
+        if (newPlayerInput.length() >= MAX_PLAYER_NAME_LENGTH) {
+            return;
+        }
+        char c = Character.toUpperCase(character);
+        if (c >= 'A' && c <= 'Z') {
+            newPlayerInput += c;
+        }
     }
 
     public void mouseMoved(int mouseX, int mouseY) {
@@ -133,24 +162,14 @@ public class PlayerSelection extends SequentiallyThinkingScreenModel {
         super.mouseButtonFunction(function);
         switch (function) {
             case PlayerSelection.FUNCTION_BACK:
-                // Go back to game without saving
+                // Leave the screen, the result is saved nevertheless so that no game is lost
+                saveResult(selectedPlayer.isEmpty() ? newPlayerInput : selectedPlayer);
                 getMainPanel().changeToMenu();
                 break;
             case PlayerSelection.FUNCTION_CONFIRM:
-                // Save the game result with selected player
-                if (!selectedPlayer.isEmpty()) {
-                    GameResult resultWithPlayer = new GameResult(
-                        gameResult.getMapSize(),
-                        gameResult.getTimeMillis(),
-                        gameResult.getAccuracyPercent(),
-                        gameResult.getDateMillis(),
-                        selectedPlayer,
-                        gameResult.getTotalClicks(),
-                        gameResult.getTotalMissClicks()
-                    );
-                    scoreboard.saveResult(resultWithPlayer);
-                    getMainPanel().changeToMenu();
-                }
+                // Save the game result, the player tag is optional but the result must never be lost
+                saveResult(selectedPlayer.isEmpty() ? newPlayerInput : selectedPlayer);
+                getMainPanel().changeToMenu();
                 break;
             case PlayerSelection.FUNCTION_ADD_PLAYER:
                 // Toggle add player input
@@ -172,46 +191,55 @@ public class PlayerSelection extends SequentiallyThinkingScreenModel {
 
     @Override
     protected void quit() {
+        // The game was played, the result is saved even if the screen is left without a tag
+        saveResult(selectedPlayer.isEmpty() ? newPlayerInput : selectedPlayer);
         getMainPanel().changeToMenu();
+    }
+
+    /**
+     * Saves the game result with the given player tag, the result is only stored once.
+     */
+    private void saveResult(String player) {
+        if (resultSaved) {
+            return;
+        }
+        resultSaved = true;
+        String normalized = player == null ? "" : player.trim().toUpperCase();
+        if (!normalized.isEmpty() && !existingPlayers.contains(normalized)) {
+            existingPlayers.add(normalized);
+            existingPlayers.sort(String::compareToIgnoreCase);
+        }
+        scoreboard.saveResult(new GameResult(
+            gameResult.getMapSize(),
+            gameResult.getTimeMillis(),
+            gameResult.getAccuracyPercent(),
+            gameResult.getDateMillis(),
+            normalized,
+            gameResult.getTotalClicks(),
+            gameResult.getTotalMissClicks()
+        ));
     }
 
     @Override
     public void doThink(float delta) {
-        // Handle text input for new player
-        if (showingAddPlayer) {
-            processTextInput();
-        }
     }
 
-    private void processTextInput() {
-        // Handle backspace
-        if (keys[8] && !newPlayerInput.isEmpty()) { // VK_BACKSPACE
-            newPlayerInput = newPlayerInput.substring(0, newPlayerInput.length() - 1);
+    /**
+     * Takes over the entered player name, adds it to the list of known players and selects it.
+     */
+    private void confirmNewPlayer() {
+        if (newPlayerInput.isEmpty()) {
+            return;
         }
-        // Handle character input (only allow uppercase letters, max 3 chars)
-        else if (newPlayerInput.length() < 3) {
-            for (char c = 'A'; c <= 'Z'; c++) {
-                if (keys[(int) c]) {
-                    newPlayerInput += c;
-                    break;
-                }
-            }
+        String normalized = newPlayerInput.toUpperCase();
+        if (!existingPlayers.contains(normalized)) {
+            existingPlayers.add(normalized);
+            existingPlayers.sort(String::compareToIgnoreCase);
         }
-        // Handle enter to confirm new player
-        if (keys[10]) { // VK_ENTER
-            if (!newPlayerInput.isEmpty()) {
-                // Add to existing players if not already there
-                String normalized = newPlayerInput.toUpperCase();
-                if (!existingPlayers.contains(normalized)) {
-                    existingPlayers.add(normalized);
-                    existingPlayers.sort(String::compareToIgnoreCase);
-                }
-                selectedPlayer = normalized;
-                showingAddPlayer = false;
-                newPlayerInput = "";
-                setNeededButtonsVisible();
-            }
-        }
+        selectedPlayer = normalized;
+        showingAddPlayer = false;
+        newPlayerInput = "";
+        setNeededButtonsVisible();
     }
 
     @Override

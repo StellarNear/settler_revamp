@@ -211,7 +211,16 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
     public void keyPressed(int keyCode, char character) {
         super.keyPressed(keyCode, character);
 
-        keys[keyCode] = true;
+        setKeyState(keyCode, true);
+    }
+
+    /**
+     * Stores the state of a key, key codes which are out of range are ignored.
+     */
+    private void setKeyState(int keyCode, boolean pressed) {
+        if (keyCode >= 0 && keyCode < keys.length) {
+            keys[keyCode] = pressed;
+        }
     }
 
     private void createNewLevel() {
@@ -327,7 +336,7 @@ public class Tiwanaku extends SequentiallyThinkingScreenModel {
             this.createNewLevel();
         }
 
-        keys[keyCode] = false;
+        setKeyState(keyCode, false);
     }
 
     public void mouseMoved(int mouseX, int mouseY) {

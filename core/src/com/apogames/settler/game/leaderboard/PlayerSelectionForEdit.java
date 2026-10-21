@@ -26,13 +26,13 @@ public class PlayerSelectionForEdit extends SequentiallyThinkingScreenModel {
     public static final String FUNCTION_CONFIRM = "PLAYER_SELECTION_EDIT_CONFIRM";
     public static final String FUNCTION_ADD_PLAYER = "PLAYER_SELECTION_EDIT_ADD";
 
-    private final boolean[] keys = new boolean[256];
     private boolean isPressed = false;
     private int mouseX = 0;
     private int mouseY = 0;
 
     private final MainPanel mainPanel;
     private final GameResult resultToEdit; // The result to update with new player selection
+    private final int resultIndex; // Index of the result in the scoreboard, -1 if unknown
     private final Scoreboard scoreboard;
 
     private List<String> existingPlayers = new ArrayList<>();
@@ -41,9 +41,14 @@ public class PlayerSelectionForEdit extends SequentiallyThinkingScreenModel {
     private boolean showingAddPlayer = false;
 
     public PlayerSelectionForEdit(MainPanel game, GameResult resultToEdit) {
+        this(game, resultToEdit, -1);
+    }
+
+    public PlayerSelectionForEdit(MainPanel game, GameResult resultToEdit, int resultIndex) {
         super(game);
         this.mainPanel = game;
         this.resultToEdit = resultToEdit;
+        this.resultIndex = resultIndex;
         this.scoreboard = new Scoreboard();
         this.loadExistingPlayers();
         // Pre-select the current player if it exists
@@ -73,15 +78,21 @@ public class PlayerSelectionForEdit extends SequentiallyThinkingScreenModel {
     }
 
     public void setNeededButtonsVisible() {
-        getMainPanel().getButtonByFunction(FUNCTION_BACK).setVisible(true);
-        getMainPanel().getButtonByFunction(FUNCTION_CONFIRM).setVisible(true);
-        getMainPanel().getButtonByFunction(FUNCTION_ADD_PLAYER).setVisible(true);
+        setButtonVisible(FUNCTION_BACK);
+        setButtonVisible(FUNCTION_CONFIRM);
+        setButtonVisible(FUNCTION_ADD_PLAYER);
+    }
+
+    private void setButtonVisible(String function) {
+        ApoButton button = getMainPanel().getButtonByFunction(function);
+        if (button != null) {
+            button.setVisible(true);
+        }
     }
 
     @Override
     public void keyPressed(int keyCode, char character) {
         super.keyPressed(keyCode, character);
-        keys[keyCode] = true;
         Logger.debug("PlayerSelectionForEdit", "keyPressed keyCode=" + keyCode + " character=" + character + " showingAddPlayer=" + showingAddPlayer);
         if (showingAddPlayer) {
             processKeyInput(keyCode, character);
@@ -94,12 +105,6 @@ public class PlayerSelectionForEdit extends SequentiallyThinkingScreenModel {
         if (showingAddPlayer) {
             processTypedCharacter(character);
         }
-    }
-
-    @Override
-    public void keyButtonReleased(int keyCode, char character) {
-        super.keyButtonReleased(keyCode, character);
-        keys[keyCode] = false;
     }
 
     public void mouseMoved(int mouseX, int mouseY) {
@@ -155,7 +160,7 @@ public class PlayerSelectionForEdit extends SequentiallyThinkingScreenModel {
         switch (function) {
             case PlayerSelectionForEdit.FUNCTION_BACK:
                 // Go back to leaderboard without saving
-                getMainPanel().changeToMenu();
+                getMainPanel().changeToLeaderboard();
                 break;
             case PlayerSelectionForEdit.FUNCTION_CONFIRM:
                 // Save the edited game result with selected player
@@ -178,9 +183,17 @@ public class PlayerSelectionForEdit extends SequentiallyThinkingScreenModel {
                         resultToEdit.getTotalClicks(),
                         resultToEdit.getTotalMissClicks()
                     );
-                    // Update the scoreboard with the new player trigram
-                    scoreboard.updateResult(resultToEdit, updatedResult);
-                    getMainPanel().changeToMenu();
+                    // Update the scoreboard with the new player trigram, the index is used to
+                    // address the exact result, the field based match is only the fallback
+                    boolean updated = false;
+                    if (resultIndex >= 0) {
+                        updated = scoreboard.updateResult(resultIndex, updatedResult);
+                    }
+                    if (!updated) {
+                        updated = scoreboard.updateResult(resultToEdit, updatedResult);
+                    }
+                    Logger.debug("PlayerSelectionForEdit", "scoreboard updated=" + updated);
+                    getMainPanel().changeToLeaderboard();
                 } else {
                     Logger.debug("PlayerSelectionForEdit", "CONFIRM pressed but no player selected or typed, ignoring");
                 }
@@ -206,7 +219,7 @@ public class PlayerSelectionForEdit extends SequentiallyThinkingScreenModel {
 
     @Override
     protected void quit() {
-        getMainPanel().changeToMenu();
+        getMainPanel().changeToLeaderboard();
     }
 
     @Override

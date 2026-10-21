@@ -30,12 +30,10 @@ public class Scoreboard {
      * Updates an existing result in the scoreboard with a new result.
      * @param oldResult The result to replace
      * @param newResult The result to replace it with
+     * @return true if a result was replaced
      */
-    public void updateResult(GameResult oldResult, GameResult newResult) {
-        Preferences pref = Gdx.app.getPreferences(PREF_NAME);
+    public boolean updateResult(GameResult oldResult, GameResult newResult) {
         List<GameResult> results = loadResults();
-        
-        // Find and replace the result
         for (int i = 0; i < results.size(); i++) {
             GameResult result = results.get(i);
             // Compare all fields except playerTrigram to find the matching result
@@ -43,14 +41,28 @@ public class Scoreboard {
                 result.getTimeMillis() == oldResult.getTimeMillis() &&
                 result.getAccuracyPercent() == oldResult.getAccuracyPercent() &&
                 result.getDateMillis() == oldResult.getDateMillis()) {
-                results.set(i, newResult);
-                break;
+                return updateResult(i, newResult);
             }
         }
-        
-        String serialized = serialize(results);
-        pref.putString(KEY_RESULTS, serialized);
+        return false;
+    }
+
+    /**
+     * Updates the result at the given index of the scoreboard.
+     * @param index The index of the result to replace
+     * @param newResult The result to replace it with
+     * @return true if the result was replaced
+     */
+    public boolean updateResult(int index, GameResult newResult) {
+        Preferences pref = Gdx.app.getPreferences(PREF_NAME);
+        List<GameResult> results = loadResults();
+        if (index < 0 || index >= results.size()) {
+            return false;
+        }
+        results.set(index, newResult);
+        pref.putString(KEY_RESULTS, serialize(results));
         pref.flush();
+        return true;
     }
 
     public List<GameResult> loadResults() {

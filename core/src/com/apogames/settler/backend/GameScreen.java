@@ -422,8 +422,9 @@ public class GameScreen implements Screen, InputProcessor {
     public boolean keyDown(int keycode) {
         Game.markDirty();
         if (this.model != null) {
+            // The key press is delivered in the think method, delivering it here as well would
+            // call the model twice for a single key press
             keyPressedArray.add(keycode);
-            this.model.keyPressed(keycode, (char) (keycode));
         }
         return false;
     }
@@ -439,9 +440,8 @@ public class GameScreen implements Screen, InputProcessor {
     public boolean keyTyped(char character) {
         Game.markDirty();
         if (this.model != null) {
-            if ((int) character != 0) {
-                keyReleasedArray.add((int) character);
-            }
+            // A typed character is not a key code, it must not be handled as a key release,
+            // otherwise characters like 'o' (111 = Input.Keys.ESCAPE) would close the screen
             this.model.keyTyped(character);
         }
         return false;

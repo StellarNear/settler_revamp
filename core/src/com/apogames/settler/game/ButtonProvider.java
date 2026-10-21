@@ -304,16 +304,28 @@ public class ButtonProvider {
 			button.setFont(AssetLoader.font40);
 			this.game.getButtons().add(button);
 
-			text = "Confirm";
-			function = PlayerSelection.FUNCTION_CONFIRM;
-			width = 140;
-			height = 48;
-			x = Constants.GAME_WIDTH / 2 - width - 10;
-			y = 30;
-			button = new ApoButtonColor(x, y, width, height, function, text, Constants.COLOR_PURPLE, Constants.COLOR_CLEAR);
-			button.setStroke(1);
-			button.setFont(AssetLoader.font30);
-			this.game.getButtons().add(button);
+		text = "Confirm";
+		function = PlayerSelection.FUNCTION_CONFIRM;
+		width = 140;
+		height = 48;
+		x = Constants.GAME_WIDTH / 2 - width - 10;
+		y = 30;
+		button = new ApoButtonColor(x, y, width, height, function, text, Constants.COLOR_PURPLE, Constants.COLOR_CLEAR);
+		button.setStroke(1);
+		button.setFont(AssetLoader.font30);
+		this.game.getButtons().add(button);
+
+		text = "+";
+		function = PlayerSelection.FUNCTION_ADD_PLAYER;
+		width = 60;
+		height = 48;
+		x = Constants.GAME_WIDTH / 2 + 10;
+		y = 30;
+		button = new ApoButtonColor(x, y, width, height, function, text, Constants.COLOR_PURPLE, Constants.COLOR_CLEAR);
+		button.setStroke(1);
+		button.setFont(AssetLoader.font40);
+		this.game.getButtons().add(button);
+
 
 		text = "Step";
 			function = Algorithm.FUNCTION_STEP;

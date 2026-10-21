@@ -54,7 +54,7 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
     @Override
     public void keyPressed(int keyCode, char character) {
         super.keyPressed(keyCode, character);
-        keys[keyCode] = true;
+        setKeyState(keyCode, true);
     }
 
     @Override
@@ -100,7 +100,16 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
     @Override
     public void keyButtonReleased(int keyCode, char character) {
         super.keyButtonReleased(keyCode, character);
-        keys[keyCode] = false;
+        setKeyState(keyCode, false);
+    }
+
+    /**
+     * Stores the state of a key, key codes which are out of range are ignored.
+     */
+    private void setKeyState(int keyCode, boolean pressed) {
+        if (keyCode >= 0 && keyCode < keys.length) {
+            keys[keyCode] = pressed;
+        }
     }
 
     public void mouseMoved(int mouseX, int mouseY) {
@@ -169,6 +178,33 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
     public void doThink(float delta) {
     }
 
+    /**
+     * Checks if a result matches the currently active filters.
+     */
+    private boolean matchesFilter(GameResult result) {
+        if (filterMapSize != null && !filterMapSize.equals(result.getMapSize())) {
+            return false;
+        }
+        if (!filterPlayer.isEmpty() && (result.getPlayerTrigram() == null
+            || !result.getPlayerTrigram().toLowerCase().contains(filterPlayer.toLowerCase()))) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Returns the results which are currently visible, the order is the same as in the render method.
+     */
+    private List<GameResult> getFilteredResults(List<GameResult> results) {
+        List<GameResult> filtered = new ArrayList<>();
+        for (GameResult result : results) {
+            if (matchesFilter(result)) {
+                filtered.add(result);
+            }
+        }
+        return filtered;
+    }
+
     @Override
     public void render() {
         getMainPanel().getRenderer().begin(ShapeRenderer.ShapeType.Filled);
@@ -181,12 +217,7 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
 
         Scoreboard scoreboard = new Scoreboard();
         List<GameResult> results = scoreboard.loadResults();
-        List<GameResult> filtered = new ArrayList<>();
-        for (GameResult r : results) {
-            if (filterMapSize != null && !filterMapSize.equals(r.getMapSize())) continue;
-            if (!filterPlayer.isEmpty() && (r.getPlayerTrigram() == null || !r.getPlayerTrigram().toLowerCase().contains(filterPlayer.toLowerCase()))) continue;
-            filtered.add(r);
-        }
+        List<GameResult> filtered = getFilteredResults(results);
         this.resultsSize = filtered.size();
         long totalTime = 0;
         double sumAcc = 0;
@@ -266,28 +297,41 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
      private void checkForPlayerNameClick(int clickX, int clickY) {
          Scoreboard scoreboard = new Scoreboard();
          List<GameResult> results = scoreboard.loadResults();
-
-        if (results.isEmpty()) {
+         if (results.isEmpty()) {
              return;
          }
 
-         float startY = Constants.GAME_HEIGHT / 2f + 40;
-         float lineHeight = 45;
-         float headerY = startY + 10;
-         float headerHeight = 40f;
-         
-         // Column widths and positions (must match render method)
-         final int leftMargin = 10;
-         final int dateWidth = 210; // from 10 to 220
-         final int sizeWidth = 140; // from 220 to 360
-         final int timeWidth = 110; // from 360 to 470
-         final int playerWidth = 110; // from 470 to 580
-         final int accuracyWidth = 70; // from 580 to 650
-         final int tableWidth = leftMargin + dateWidth + sizeWidth + timeWidth + playerWidth + accuracyWidth;
-         final float tableX = Constants.GAME_WIDTH / 2f - tableWidth / 2f;
+         // The click must be checked against the same list which is drawn, otherwise a filtered
+         // leaderboard would edit a different result than the one the user has clicked on
+         List<GameResult> filtered = getFilteredResults(results);
+         List<Integer> resultIndices = new ArrayList<>();
+         for (int i = 0; i < results.size(); i++) {
+             if (matchesFilter(results.get(i))) {
+                 resultIndices.add(i);
+             }
+         }
+         if (filtered.isEmpty()) {
+             return;
+         }
 
-         float recordY = headerY + headerHeight + 15 - scrollOffset;
-         for (GameResult result : results) {             // Player column bounds
+        float startY = Constants.GAME_HEIGHT / 2f + 40;
+        float lineHeight = 45;
+        float headerY = startY + 10;
+        float headerHeight = 40f;
+        
+        // Column widths and positions (must match render method)
+        final int leftMargin = 10;
+        final int dateWidth = 210; // from 10 to 220
+        final int sizeWidth = 140; // from 220 to 360
+        final int timeWidth = 110; // from 360 to 470
+        final int playerWidth = 110; // from 470 to 580
+        final int accuracyWidth = 70; // from 580 to 650
+        final int tableWidth = leftMargin + dateWidth + sizeWidth + timeWidth + playerWidth + accuracyWidth;
+        final float tableX = Constants.GAME_WIDTH / 2f - tableWidth / 2f;
+
+        float recordY = headerY + headerHeight + 15 - scrollOffset;
+        for (int i = 0; i < filtered.size(); i++) {
+            GameResult result = filtered.get(i);
              float playerX = tableX + leftMargin + dateWidth + sizeWidth + timeWidth;
              float playerWidthActual = playerWidth; // 110
              float playerHeight = 20; // Approximate height for text
@@ -296,19 +340,20 @@ public class Leaderboard extends SequentiallyThinkingScreenModel {
                  clickY >= recordY - 10 && clickY <= recordY + playerHeight) {
                  // Click was on this player name, prepare to edit
                  this.resultToEdit = result;
-                 showPlayerSelectionForEdit(result);
+                 showPlayerSelectionForEdit(result, resultIndices.get(i));
                  return;
              }
              recordY += lineHeight;
          }
      }
-
+ 
      /**
       * Shows a player selection screen for editing an existing result's player trigram.
       */
-     private void showPlayerSelectionForEdit(GameResult resultToEdit) {
-         getMainPanel().changeModel(new PlayerSelectionForEdit(this.getMainPanel(), resultToEdit));
+     private void showPlayerSelectionForEdit(GameResult resultToEdit, int resultIndex) {
+         getMainPanel().changeModel(new PlayerSelectionForEdit(this.getMainPanel(), resultToEdit, resultIndex));
      }
+
 
      public void drawOverlay() {
     }
