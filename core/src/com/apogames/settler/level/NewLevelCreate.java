@@ -10,6 +10,22 @@ import java.util.Set;
 
 public class NewLevelCreate {
 
+    // Randomized but always valid solution for the 2x2 block area. The backtracking
+    // solver places one block permutation at a time and only keeps placements that
+    // keep the whole board a legal king-graph colouring, so the produced solution
+    // never needs to be rejected by FillAndUniqueCheck (which would restart the
+    // whole generation and look like a freeze). The budget and the restart count
+    // keep the solver bounded; the deterministic pattern is the last resort.
+    private static final int SOLUTION_PLACEMENT_BUDGET = 2000;
+    private static final int SOLUTION_RESTARTS = 6;
+
+    // Upper limit for the recursive biome colouring of a single attempt. It runs
+    // on the render thread, so a pathological board must not be able to block it.
+    private static final long BIOME_COLORING_TIMEOUT_MS = 2500;
+
+    // All 24 permutations of {1,2,3,4}, used as the candidates for a 2x2 block.
+    private static final byte[][] BLOCK_PERMUTATIONS = createBlockPermutations();
+
     private byte[][] myBackground;
     private byte[][] generatedSolution;
 
@@ -20,6 +36,10 @@ public class NewLevelCreate {
     private Difficulty difficulty;
     private final int maxRegionSize;
     private FillAndUniqueCheck pendingFill;
+
+    // Deadline for the recursive biome colouring. It runs on the render thread,
+    // so a pathological board must never be able to block it indefinitely.
+    private long biomeColoringDeadline;
 
     // State for the step-based generation API (see beginGeneration/stepGeneration),
     // which lets a caller spread attempts across multiple frames instead of
@@ -190,7 +210,10 @@ public class NewLevelCreate {
             return "Clue checks: " + this.pendingFill.getCompletedClueChecks()
                     + "   |   Clues remaining: " + this.pendingFill.getRemainingClues();
         }
-        return this.genBackgroundReady ? "Finding and checking a solution..." : "Building and shaping regions...";
+        if (this.genBackgroundReady) {
+            return "Finding and checking a solution...";
+        }
+        return "Building and shaping regions... (attempt " + this.genAttemptCount + "/" + this.genMaxRetries + ")";
     }
 
     public int getMaxRetries() {
@@ -310,7 +333,6 @@ public class NewLevelCreate {
                 for (int offsetY = 0; offsetY < 2; offsetY++) {
                     for (int offsetX = 0; offsetX < 2; offsetX++) {
                         this.myBackground[blockY + offsetY][blockX + offsetX] = (byte) region;
-                        solution[blockY + offsetY][blockX + offsetX] = (byte) (1 + offsetX + 2 * offsetY);
                     }
                 }
             }
@@ -333,6 +355,10 @@ public class NewLevelCreate {
                 }
             }
         }
+
+        // The block area is solved after the strip, so the strip acts as a fixed
+        // constraint for the block placement.
+        fillRandomSolution(solution, evenWidth, ySize, xSize);
 
         int targetFives = Math.max(fiveCount, placedFives + evenWidth * ySize / 16);
         for (int attempt = 0; attempt < xSize * ySize * 4 && placedFives < targetFives; attempt++) {
@@ -362,7 +388,9 @@ public class NewLevelCreate {
 
         this.found = false;
         byte[][] coloredBackground = new byte[ySize][xSize];
+        this.biomeColoringDeadline = System.currentTimeMillis() + BIOME_COLORING_TIMEOUT_MS;
         correctNumbersToBiom(coloredBackground, 1 + (int) (Math.random() * region), region);
+        this.biomeColoringDeadline = 0;
         if (!this.found) {
             return false;
         }
@@ -577,6 +605,9 @@ public class NewLevelCreate {
 
     private void correctNumbersToBiom(byte[][] newBackground, int startValueToReplace, int maxValue) {
         if (found) {
+            return;
+        }
+        if (this.biomeColoringDeadline > 0 && System.currentTimeMillis() > this.biomeColoringDeadline) {
             return;
         }
         if (checkFound(newBackground)) {
@@ -825,5 +856,159 @@ public class NewLevelCreate {
             return new GridPoint2(-1, 0);
         }
         return new GridPoint2(0, -1);
+    }
+
+    /**
+     * Fills the 2x2 block area of the solution with a randomized but always legal
+     * pattern. Every block holds one cell of each value 1-4 (required so that each
+     * region can be solved), but the arrangement inside the block is randomized
+     * instead of the repeating 1/2/3/4 stamp, so the clues that survive the
+     * clue removal no longer form a visible lattice.
+     *
+     * The blocks are placed with a backtracking search that only accepts
+     * placements keeping the board a valid king-graph colouring (no two equal
+     * values in the 8 neighbouring cells). The search is bounded by
+     * SOLUTION_PLACEMENT_BUDGET and SOLUTION_RESTARTS; if it cannot find a
+     * layout the deterministic pattern is used, which is always valid.
+     */
+    private void fillRandomSolution(byte[][] solution, int blockWidth, int ySize, int xSize) {
+        int blocksX = blockWidth / 2;
+        int blocksY = ySize / 2;
+        if (blocksX <= 0 || blocksY <= 0) {
+            return;
+        }
+        for (int restart = 0; restart < SOLUTION_RESTARTS; restart++) {
+            byte[][] candidate = new byte[ySize][xSize];
+            for (int y = 0; y < ySize; y++) {
+                System.arraycopy(solution[y], 0, candidate[y], 0, xSize);
+            }
+            int[] budget = new int[]{SOLUTION_PLACEMENT_BUDGET};
+            if (placeBlocks(candidate, 0, 0, blocksX, blocksY, xSize, ySize, budget)) {
+                for (int y = 0; y < ySize; y++) {
+                    System.arraycopy(candidate[y], 0, solution[y], 0, xSize);
+                }
+                return;
+            }
+        }
+        for (int blockY = 0; blockY < ySize; blockY += 2) {
+            for (int blockX = 0; blockX < blockWidth; blockX += 2) {
+                solution[blockY][blockX] = 1;
+                solution[blockY][blockX + 1] = 2;
+                solution[blockY + 1][blockX] = 3;
+                solution[blockY + 1][blockX + 1] = 4;
+            }
+        }
+    }
+
+    /**
+     * Places the 2x2 blocks in row major order, trying a random permutation of
+     * {1,2,3,4} for every block. Returns false when the block cannot be placed
+     * or the placement budget is exhausted, in which case the caller restarts
+     * with a fresh random order.
+     */
+    private boolean placeBlocks(byte[][] solution, int blockX, int blockY, int blocksX, int blocksY, int xSize, int ySize, int[] budget) {
+        if (blockY >= blocksY) {
+            return true;
+        }
+        if (blockX >= blocksX) {
+            return placeBlocks(solution, 0, blockY + 1, blocksX, blocksY, xSize, ySize, budget);
+        }
+        if (budget[0] <= 0) {
+            return false;
+        }
+        budget[0] -= 1;
+
+        int x = blockX * 2;
+        int y = blockY * 2;
+        int[] order = new int[BLOCK_PERMUTATIONS.length];
+        for (int i = 0; i < order.length; i++) {
+            order[i] = i;
+        }
+        shuffle(order);
+
+        for (int i = 0; i < order.length; i++) {
+            byte[] permutation = BLOCK_PERMUTATIONS[order[i]];
+            solution[y][x] = permutation[0];
+            solution[y][x + 1] = permutation[1];
+            solution[y + 1][x] = permutation[2];
+            solution[y + 1][x + 1] = permutation[3];
+            if (isBlockValid(solution, x, y, xSize, ySize)
+                    && placeBlocks(solution, blockX + 1, blockY, blocksX, blocksY, xSize, ySize, budget)) {
+                return true;
+            }
+        }
+
+        solution[y][x] = 0;
+        solution[y][x + 1] = 0;
+        solution[y + 1][x] = 0;
+        solution[y + 1][x + 1] = 0;
+        return false;
+    }
+
+    /**
+     * Checks whether the four cells of the 2x2 block at (x, y) keep the board a
+     * valid king-graph colouring. Cells of the same block are mutually distinct
+     * because they hold a permutation, so only the cells outside the block are
+     * checked. Cells that are not placed yet are still 0 and are skipped - they
+     * are checked against this block when they get placed.
+     */
+    private boolean isBlockValid(byte[][] solution, int x, int y, int xSize, int ySize) {
+        for (int offsetY = 0; offsetY < 2; offsetY++) {
+            for (int offsetX = 0; offsetX < 2; offsetX++) {
+                int cellX = x + offsetX;
+                int cellY = y + offsetY;
+                byte value = solution[cellY][cellX];
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        if (dx == 0 && dy == 0) {
+                            continue;
+                        }
+                        int nx = cellX + dx;
+                        int ny = cellY + dy;
+                        if (nx < 0 || nx >= xSize || ny < 0 || ny >= ySize) {
+                            continue;
+                        }
+                        if (nx >= x && nx < x + 2 && ny >= y && ny < y + 2) {
+                            continue;
+                        }
+                        if (solution[ny][nx] == 0) {
+                            continue;
+                        }
+                        if (solution[ny][nx] == value) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    private void shuffle(int[] values) {
+        for (int i = values.length - 1; i > 0; i--) {
+            int j = (int) (Math.random() * (i + 1));
+            int tmp = values[i];
+            values[i] = values[j];
+            values[j] = tmp;
+        }
+    }
+
+    private static byte[][] createBlockPermutations() {
+        ArrayList<byte[]> permutations = new ArrayList<>();
+        for (int a = 1; a <= 4; a++) {
+            for (int b = 1; b <= 4; b++) {
+                if (b == a) {
+                    continue;
+                }
+                for (int c = 1; c <= 4; c++) {
+                    if (c == a || c == b) {
+                        continue;
+                    }
+                    int d = 10 - a - b - c;
+                    permutations.add(new byte[]{(byte) a, (byte) b, (byte) c, (byte) d});
+                }
+            }
+        }
+        return permutations.toArray(new byte[permutations.size()][]);
     }
 }
