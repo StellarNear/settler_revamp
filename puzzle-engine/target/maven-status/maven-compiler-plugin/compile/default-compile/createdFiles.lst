@@ -1,0 +1,17 @@
+com\apogames\tiwanaku\engine\Difficulty.class
+com\apogames\tiwanaku\engine\GenerationSpec.class
+com\apogames\tiwanaku\engine\ExactCoverSolver$Matrix.class
+com\apogames\tiwanaku\engine\ExactCoverSolver.class
+com\apogames\tiwanaku\engine\SolverOptions.class
+com\apogames\tiwanaku\engine\GeneratedPuzzle.class
+com\apogames\tiwanaku\engine\AttemptState.class
+com\apogames\tiwanaku\engine\UniquenessStatus.class
+com\apogames\tiwanaku\engine\GenerationStatus.class
+com\apogames\tiwanaku\engine\CancellationToken.class
+com\apogames\tiwanaku\engine\PuzzleGenerator.class
+com\apogames\tiwanaku\engine\PuzzleDefinition.class
+com\apogames\tiwanaku\engine\BoardRules.class
+com\apogames\tiwanaku\engine\ExactCoverSolver$Search.class
+com\apogames\tiwanaku\engine\SearchResult.class
+com\apogames\tiwanaku\engine\PuzzleGenerator$ClueRemovalResult.class
+com\apogames\tiwanaku\engine\SearchTermination.class

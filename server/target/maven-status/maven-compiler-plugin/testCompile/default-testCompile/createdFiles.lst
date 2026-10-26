@@ -1,0 +1,3 @@
+com\apogames\tiwanaku\server\LocalServerBootstrapIntegrationTest.class
+com\apogames\tiwanaku\server\LocalRequestSecurityFilterTest.class
+com\apogames\tiwanaku\server\DataDirectoryLockTest.class
