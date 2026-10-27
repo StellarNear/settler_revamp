@@ -6,11 +6,16 @@ import { useGameStore } from "./stores/game";
 const game = useGameStore();
 const { t } = useI18n();
 let refreshTimer: number | undefined;
+let displayTimer: number | undefined;
 onMounted(() => {
   void game.connect();
-  refreshTimer = window.setInterval(() => void game.refreshAttempt(), 5_000);
+  refreshTimer = window.setInterval(() => void game.heartbeat(), 5_000);
+  displayTimer = window.setInterval(game.tick, 1_000);
 });
-onUnmounted(() => window.clearInterval(refreshTimer));
+onUnmounted(() => {
+  window.clearInterval(refreshTimer);
+  window.clearInterval(displayTimer);
+});
 </script>
 
 <template>
@@ -52,6 +57,13 @@ onUnmounted(() => window.clearInterval(refreshTimer));
         @click="game.connect"
       >
         {{ t(game.connecting ? "connecting" : "reconnect") }}
+      </button>
+      <button
+        v-if="game.outcomeUnknown && game.connected"
+        :disabled="game.pending"
+        @click="game.resolvePending"
+      >
+        Resolve pending action (retry same ID)
       </button>
     </div>
     <main id="content" tabindex="-1"><RouterView /></main>

@@ -9,6 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -28,16 +30,29 @@ public final class AttemptService {
     private final TransactionTemplate transactions;
     private final GenerationJobService jobs;
     private final ObjectMapper objectMapper;
+    private final GameplayClock clock;
 
     public AttemptService(
             JdbcTemplate jdbc,
             TransactionTemplate transactions,
             GenerationJobService jobs,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            GameplayClock clock) {
         this.jdbc = jdbc;
         this.transactions = transactions;
         this.jobs = jobs;
         this.objectMapper = objectMapper;
+        this.clock = clock;
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void invalidatePreviousProcessLeases() {
+        jdbc.update("""
+                UPDATE attempts SET editor_lease_expires_at = ?,
+                    revision = revision + CASE WHEN status = 'PLAYING' THEN 1 ELSE 0 END,
+                    status = CASE WHEN status = 'PLAYING' THEN 'SUSPENDED' ELSE status END
+                WHERE status <> 'COMPLETED'
+                """, Timestamp.from(clock.now()));
     }
 
     public synchronized AttemptSnapshot create(CreateAttemptRequest request) {
@@ -52,21 +67,20 @@ public final class AttemptService {
             return load(UUID.fromString((String) existing.get("ATTEMPT_ID")));
         }
 
-        if (request.generationJobId() == null) {
-            throw ApiException.badRequest("A completed generation job is required");
+        if ((request.generationJobId() == null) == (request.restartAttemptId() == null)) {
+            throw ApiException.badRequest("Choose exactly one generation job or attempt to restart");
         }
-        GeneratedPuzzle generated = jobs.result(request.generationJobId());
-        if (generated == null || generated.puzzle() == null || generated.solution() == null) {
-            throw ApiException.conflict("The generation job has no certified puzzle");
-        }
+        AttemptSnapshot original = request.restartAttemptId() == null ? null : load(request.restartAttemptId());
+        GeneratedPuzzle generated = original == null ? jobs.result(request.generationJobId()) : null;
         UUID attemptId = UUID.randomUUID();
-        UUID puzzleId = UUID.randomUUID();
-        PuzzleDefinition puzzle = generated.puzzle();
+        UUID puzzleId = original == null ? UUID.randomUUID() : UUID.fromString(original.puzzleId());
+        PuzzleDefinition puzzle = original == null ? generated.puzzle() : loadPuzzle(original.puzzleId()).definition();
         int[] values = puzzle.givens();
-        Instant leaseExpiresAt = Instant.now().plusSeconds(EDITOR_LEASE_SECONDS);
+        Instant leaseExpiresAt = clock.now().plusSeconds(EDITOR_LEASE_SECONDS);
+        GameProgress progress = GameProgress.initial(values.length, original != null);
 
         return transactions.execute(status -> {
-            jdbc.update(
+            if (original == null) jdbc.update(
                     """
                     INSERT INTO puzzles (puzzle_id, columns_count, rows_count, region_ids, givens, solution)
                     VALUES (?, ?, ?, ?, ?, ?)
@@ -81,14 +95,15 @@ public final class AttemptService {
                     """
                     INSERT INTO attempts
                       (attempt_id, puzzle_id, values_snapshot, status, revision, editor_session_id,
-                       editor_lease_expires_at, move_count)
-                    VALUES (?, ?, ?, 'READY', 0, ?, ?, 0)
+                       editor_lease_expires_at, move_count, progress_json)
+                    VALUES (?, ?, ?, 'READY', 0, ?, ?, 0, ?)
                     """,
                     attemptId.toString(),
                     puzzleId.toString(),
                     json(values),
                     request.editorSessionId(),
-                    Timestamp.from(leaseExpiresAt));
+                    Timestamp.from(leaseExpiresAt),
+                    json(progress));
             jdbc.update(
                     """
                     INSERT INTO creation_receipts (request_id, payload_hash, attempt_id)
@@ -102,18 +117,21 @@ public final class AttemptService {
     }
 
     public AttemptSnapshot get(UUID attemptId, String editorSessionId) {
-        AttemptSnapshot snapshot = load(attemptId);
-        if (snapshot.editorSessionId().equals(editorSessionId)) {
-            refreshLease(attemptId, editorSessionId);
+        return transactions.execute(status -> {
+            Map<String, Object> row = lockAttempt(attemptId);
+            suspendExpired(attemptId, row);
+            if (row.get("EDITOR_SESSION_ID").equals(editorSessionId)) {
+                refreshLease(attemptId, editorSessionId);
+            }
             return load(attemptId);
-        }
-        return snapshot;
+        });
     }
 
     public AttemptSnapshot command(UUID attemptId, AttemptCommand command) {
         String payloadHash = hash(command);
         return transactions.execute(status -> {
             Map<String, Object> attempt = lockAttempt(attemptId);
+            suspendExpired(attemptId, attempt);
             Map<String, Object> receipt = queryOptional(
                     """
                     SELECT payload_hash, response_json
@@ -138,7 +156,7 @@ public final class AttemptService {
             if (command.type() != AttemptCommand.CommandType.TAKEOVER
                     && (!currentEditor.equals(command.editorSessionId())
                     || leaseExpiry == null
-                    || !leaseExpiry.isAfter(Instant.now()))) {
+                    || !leaseExpiry.isAfter(clock.now()))) {
                 throw ApiException.conflict("The editor lease expired or belongs to another tab");
             }
             long currentRevision = ((Number) attempt.get("REVISION")).longValue();
@@ -148,6 +166,7 @@ public final class AttemptService {
 
             PuzzleRow puzzle = loadPuzzle((String) attempt.get("PUZZLE_ID"));
             int[] values = intArray((String) attempt.get("VALUES_SNAPSHOT"));
+            GameProgress progress = progress(attempt, values.length);
             String currentStatus = (String) attempt.get("STATUS");
             String nextStatus = currentStatus;
             String nextEditor = currentEditor;
@@ -155,26 +174,28 @@ public final class AttemptService {
             boolean changed = false;
             boolean complete = false;
 
+            if ("PLAYING".equals(currentStatus)
+                    && command.type() != AttemptCommand.CommandType.TAKEOVER) {
+                progress.acceptTime(command.timingSequence(), command.elapsedMillis(), clock);
+            } else if (command.type() == AttemptCommand.CommandType.HEARTBEAT) {
+                throw ApiException.conflict("Only a playing attempt accepts timing heartbeats");
+            }
+            if (command.type() == AttemptCommand.CommandType.HEARTBEAT
+                    && (command.timingSequence() == null || command.elapsedMillis() == null)) {
+                throw ApiException.badRequest("A heartbeat requires a timing sequence and elapsed proposal");
+            }
+
             switch (command.type()) {
-                case SET_VALUE -> {
+                case SET_VALUE, CYCLE_VALUE, TOGGLE_NOTE, UNDO, REDO, CHECKPOINT,
+                        RESTORE_CHECKPOINT, CHECK, SHOW_CONFLICTS, CANDIDATES, EXPLAIN, REVEAL -> {
                     requireMutable(currentStatus);
-                    if (command.cellIndex() == null || command.value() == null
-                            || command.cellIndex() >= values.length) {
-                        throw ApiException.badRequest("A valid cell and value are required");
+                    int[] previousValues = values.clone();
+                    progress.edit(puzzle.definition(), puzzle.solution(), values, command);
+                    if (!java.util.Arrays.equals(previousValues, values) && !progress.started) {
+                        progress.startTimer(clock);
                     }
-                    int cell = command.cellIndex();
-                    if (puzzle.definition().givenAt(cell) != 0) {
-                        throw ApiException.conflict("Given cells cannot be changed");
-                    }
-                    if (command.value() > puzzle.definition().regionSizeAt(cell)) {
-                        throw ApiException.badRequest("The value exceeds this region's size");
-                    }
-                    values[cell] = command.value();
-                    if (!BoardRules.isValidPartialBoard(puzzle.definition(), values)) {
-                        throw ApiException.conflict("The move violates a puzzle rule");
-                    }
-                    nextStatus = "PLAYING";
-                    moveCount++;
+                    nextStatus = progress.started ? "PLAYING" : "READY";
+                    moveCount = progress.valueEntryCount;
                     changed = true;
                     complete = BoardRules.isValidCompleteBoard(puzzle.definition(), values);
                     if (complete) {
@@ -182,30 +203,39 @@ public final class AttemptService {
                     }
                 }
                 case PAUSE -> {
-                    requireMutable(currentStatus);
+                    if ("COMPLETED".equals(currentStatus)) {
+                        throw ApiException.conflict("Completed attempts cannot be paused");
+                    }
                     nextStatus = "SUSPENDED";
-                    changed = true;
+                    changed = !"SUSPENDED".equals(currentStatus);
+                    progress.timerProcessId = null;
                 }
                 case RESUME -> {
                     if (!"SUSPENDED".equals(currentStatus) && !"READY".equals(currentStatus)) {
                         throw ApiException.conflict("Only a ready or suspended attempt can be resumed");
                     }
-                    nextStatus = "PLAYING";
+                    nextStatus = progress.started ? "PLAYING" : "READY";
+                    if (progress.started) progress.startTimer(clock);
                     changed = true;
                 }
                 case TAKEOVER -> {
                     nextEditor = command.editorSessionId();
                     changed = !currentEditor.equals(nextEditor);
+                    if (changed && !"COMPLETED".equals(currentStatus)) {
+                        nextStatus = "SUSPENDED";
+                        progress.timerProcessId = null;
+                    }
                 }
+                case HEARTBEAT -> { }
             }
 
             long nextRevision = currentRevision + (changed ? 1 : 0);
-            Instant nextLeaseExpiry = Instant.now().plusSeconds(EDITOR_LEASE_SECONDS);
+            Instant nextLeaseExpiry = clock.now().plusSeconds(EDITOR_LEASE_SECONDS);
             jdbc.update(
                     """
                     UPDATE attempts
                     SET values_snapshot = ?, status = ?, revision = ?, editor_session_id = ?,
-                        editor_lease_expires_at = ?, move_count = ?, updated_at = CURRENT_TIMESTAMP
+                        editor_lease_expires_at = ?, move_count = ?, progress_json = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE attempt_id = ?
                     """,
                     json(values),
@@ -214,21 +244,23 @@ public final class AttemptService {
                     nextEditor,
                     Timestamp.from(nextLeaseExpiry),
                     moveCount,
+                    json(progress),
                     attemptId.toString());
 
             if (complete) {
                 jdbc.update(
                         """
-                        INSERT INTO results (result_id, attempt_id, values_snapshot, move_count)
-                        VALUES (?, ?, ?, ?)
+                        INSERT INTO results (result_id, attempt_id, values_snapshot, move_count, progress_json)
+                        VALUES (?, ?, ?, ?, ?)
                         """,
-                        UUID.randomUUID().toString(),
+                        attemptId.toString(),
                         attemptId.toString(),
                         json(values),
-                        moveCount);
+                        moveCount,
+                        json(progress));
             }
             AttemptSnapshot response = load(attemptId);
-            jdbc.update(
+            if (command.type() != AttemptCommand.CommandType.HEARTBEAT) jdbc.update(
                     """
                     INSERT INTO command_receipts
                       (attempt_id, command_id, payload_hash, response_json, revision)
@@ -255,7 +287,9 @@ public final class AttemptService {
                 intArray((String) row.get("VALUES_SNAPSHOT")),
                 ((Number) row.get("MOVE_COUNT")).intValue(),
                 timestamp(row.get("COMPLETED_AT")).toString(),
-                (String) row.get("PLAYER_TAG"));
+                (String) row.get("PLAYER_TAG"),
+                row.get("PROGRESS_JSON") == null ? null
+                        : snapshot(fromJson(text(row.get("PROGRESS_JSON")), GameProgress.class), true));
     }
 
     public AttemptSnapshot receipt(UUID attemptId, String commandId, String editorSessionId) {
@@ -270,10 +304,8 @@ public final class AttemptService {
         if (receipt == null) {
             throw ApiException.notFound("No committed receipt exists for this command");
         }
-        AttemptSnapshot saved = fromJson((String) receipt.get("RESPONSE_JSON"), AttemptSnapshot.class);
         AttemptSnapshot current = load(attemptId);
-        if (!saved.editorSessionId().equals(editorSessionId)
-                || !current.editorSessionId().equals(editorSessionId)) {
+        if (!current.editorSessionId().equals(editorSessionId)) {
             throw ApiException.conflict("This tab does not own the active editor lease");
         }
         return current;
@@ -286,7 +318,7 @@ public final class AttemptService {
                 SET editor_lease_expires_at = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE attempt_id = ? AND editor_session_id = ?
                 """,
-                Timestamp.from(Instant.now().plusSeconds(EDITOR_LEASE_SECONDS)),
+                Timestamp.from(clock.now().plusSeconds(EDITOR_LEASE_SECONDS)),
                 attemptId.toString(),
                 editorSessionId);
         if (updated != 1) {
@@ -305,7 +337,7 @@ public final class AttemptService {
             return jdbc.queryForMap(
                     """
                     SELECT attempt_id, puzzle_id, values_snapshot, status, revision, editor_session_id,
-                           editor_lease_expires_at, move_count
+                           editor_lease_expires_at, move_count, progress_json
                     FROM attempts WHERE attempt_id = ? FOR UPDATE
                     """,
                     attemptId.toString());
@@ -318,7 +350,7 @@ public final class AttemptService {
         Map<String, Object> attempt = queryOptional(
                 """
                 SELECT attempt_id, puzzle_id, values_snapshot, status, revision, editor_session_id,
-                       editor_lease_expires_at, move_count
+                       editor_lease_expires_at, move_count, progress_json
                 FROM attempts WHERE attempt_id = ?
                 """,
                 attemptId.toString());
@@ -337,14 +369,16 @@ public final class AttemptService {
                 (String) attempt.get("STATUS"),
                 ((Number) attempt.get("REVISION")).longValue(),
                 (String) attempt.get("EDITOR_SESSION_ID"),
-                String.valueOf(attempt.get("EDITOR_LEASE_EXPIRES_AT")),
-                ((Number) attempt.get("MOVE_COUNT")).intValue());
+                timestamp(attempt.get("EDITOR_LEASE_EXPIRES_AT")) == null ? null
+                        : timestamp(attempt.get("EDITOR_LEASE_EXPIRES_AT")).toString(),
+                ((Number) attempt.get("MOVE_COUNT")).intValue(),
+                snapshot(progress(attempt, puzzle.definition().cellCount()), "COMPLETED".equals(attempt.get("STATUS"))));
     }
 
     private PuzzleRow loadPuzzle(String puzzleId) {
         Map<String, Object> row = jdbc.queryForMap(
                 """
-                SELECT columns_count, rows_count, region_ids, givens
+                SELECT columns_count, rows_count, region_ids, givens, solution
                 FROM puzzles WHERE puzzle_id = ?
                 """,
                 puzzleId);
@@ -353,7 +387,40 @@ public final class AttemptService {
                 ((Number) row.get("ROWS_COUNT")).intValue(),
                 intArray(text(row.get("REGION_IDS"))),
                 intArray(text(row.get("GIVENS"))));
-        return new PuzzleRow(definition);
+        return new PuzzleRow(definition, intArray(text(row.get("SOLUTION"))));
+    }
+
+    private GameProgress progress(Map<String, Object> row, int cells) {
+        Object saved = row.get("PROGRESS_JSON");
+        if (saved != null) return fromJson(text(saved), GameProgress.class);
+        GameProgress initial = GameProgress.initial(cells, false);
+        initial.valueEntryCount = ((Number) row.get("MOVE_COUNT")).intValue();
+        initial.started = !"READY".equals(row.get("STATUS"));
+        return initial;
+    }
+
+    private AttemptSnapshot.ProgressSnapshot snapshot(GameProgress progress, boolean completed) {
+        return new AttemptSnapshot.ProgressSnapshot(
+                progress.notes, progress.elapsedMillis, progress.started, progress.replay,
+                progress.valueEntryCount, completed ? progress.wrongEntryCount : null, progress.candidateRequests,
+                progress.explanationRequests, progress.reveals, progress.continuousConflictsUsed, progress.showConflicts,
+                !progress.undo.isEmpty(), !progress.redo.isEmpty(), progress.checkpoint != null,
+                progress.conflicts, progress.candidates, progress.helpMessage, progress.timingSequence);
+    }
+
+    private void suspendExpired(UUID id, Map<String, Object> row) {
+        if (!"PLAYING".equals(row.get("STATUS"))) return;
+        GameProgress progress = progress(row, intArray(text(row.get("VALUES_SNAPSHOT"))).length);
+        Instant expiry = timestamp(row.get("EDITOR_LEASE_EXPIRES_AT"));
+        if (!progress.timerBelongsTo(clock) || expiry == null || !expiry.isAfter(clock.now())) {
+            long revision = ((Number) row.get("REVISION")).longValue() + 1;
+            progress.timerProcessId = null;
+            jdbc.update("UPDATE attempts SET status='SUSPENDED', revision=?, progress_json=? WHERE attempt_id=?",
+                    revision, json(progress), id.toString());
+            row.put("STATUS", "SUSPENDED");
+            row.put("REVISION", revision);
+            row.put("PROGRESS_JSON", json(progress));
+        }
     }
 
     private Map<String, Object> queryOptional(String sql, Object... args) {
@@ -425,6 +492,6 @@ public final class AttemptService {
         };
     }
 
-    private record PuzzleRow(PuzzleDefinition definition) {
+    private record PuzzleRow(PuzzleDefinition definition, int[] solution) {
     }
 }

@@ -170,7 +170,11 @@ class LocalServerBootstrapIntegrationTest {
         assertEquals("The editor lease expired or belongs to another tab",
                 json(oldEditorMutation).get("detail"));
 
-        String moveCommand = command("complete", 1, secondEditor, "SET_VALUE", emptyCell, answer);
+        HttpResponse<String> resumed = send("POST", "/api/v1/attempts/" + attemptId + "/commands",
+                command("resume", 1, secondEditor, "RESUME", null, null), token);
+        assertEquals(200, resumed.statusCode(), resumed.body());
+        assertEquals("READY", json(resumed).get("status"));
+        String moveCommand = command("complete", 2, secondEditor, "SET_VALUE", emptyCell, answer);
         HttpResponse<String> completed = send(
                 "POST",
                 "/api/v1/attempts/" + attemptId + "/commands",
@@ -179,7 +183,7 @@ class LocalServerBootstrapIntegrationTest {
         assertEquals(200, completed.statusCode(), completed.body());
         AttemptSnapshot completedSnapshot = JSON.readValue(completed.body(), AttemptSnapshot.class);
         assertEquals("COMPLETED", completedSnapshot.status());
-        assertEquals(2, completedSnapshot.revision());
+        assertEquals(3, completedSnapshot.revision());
         assertEquals(answer, completedSnapshot.values()[emptyCell]);
 
         HttpResponse<String> retry = send(
@@ -193,7 +197,7 @@ class LocalServerBootstrapIntegrationTest {
         HttpResponse<String> savedResult = send("GET", "/api/v1/attempts/" + attemptId + "/result", null, null);
         assertEquals(200, savedResult.statusCode());
         Map<?, ?> result = json(savedResult);
-        assertEquals(java.util.Set.of("resultId", "attemptId", "values", "moveCount", "completedAt", "playerTag"),
+        assertEquals(java.util.Set.of("resultId", "attemptId", "values", "moveCount", "completedAt", "playerTag", "progress"),
                 result.keySet());
         assertEquals(attemptId, result.get("attemptId"));
         assertEquals(1, result.get("moveCount"));

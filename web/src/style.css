@@ -38,6 +38,33 @@ nav a.router-link-active {
 .server-status {
   margin-bottom: 20px;
 }
+.play-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+}
+.play-toolbar label {
+  margin: 0;
+}
+.play-toolbar button {
+  min-height: 36px;
+}
+.manual-notes {
+  font-size: 11px;
+  font-weight: normal;
+  color: #435d62;
+}
+.cell.conflict {
+  box-shadow: inset 0 0 0 3px #ab302e;
+}
+.help-message,
+.assistance,
+.completion {
+  max-width: 650px;
+  line-height: 1.5;
+}
 .server-status p {
   margin: 8px 0;
 }

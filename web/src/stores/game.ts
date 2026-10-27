@@ -13,9 +13,11 @@ import {
   request,
 } from "../api";
 import type { AttemptSnapshot, Bootstrap, GenerationJob } from "../api";
+import type { CommandType } from "../api";
 
 const sessionKey = "tiwanaku.editorSessionId";
 const attemptKey = "tiwanaku.attemptId";
+const uncertainKey = "tiwanaku.uncertainMutation";
 
 export const useGameStore = defineStore("game", () => {
   const editorSessionId =
@@ -34,6 +36,16 @@ export const useGameStore = defineStore("game", () => {
   const connecting = ref(false);
   const pending = ref(false);
   const cancelling = ref(false);
+  const noteMode = ref(false);
+  const cycleMode = ref(false);
+  const playVisible = ref(false);
+  const pauseRequested = ref(false);
+  const outcomeUnknown = ref(false);
+  const clockTick = ref(0);
+  let localElapsed = 0;
+  let localStartedAt: number | undefined;
+  let timingSequence = 0;
+  let uncertain: { path: string; body: string } | undefined;
   let epoch = 0;
   let refreshing = false;
   const ownsEditor = computed(
@@ -49,6 +61,83 @@ export const useGameStore = defineStore("game", () => {
       (id) => id === current.regionIds[selectedCell.value ?? -1],
     ).length;
   });
+  const editable = computed(
+    () =>
+      connected.value &&
+      ownsEditor.value &&
+      !pending.value &&
+      !pauseRequested.value &&
+      !outcomeUnknown.value &&
+      ["READY", "PLAYING"].includes(attempt.value?.status ?? ""),
+  );
+  const elapsedMillis = computed(() => {
+    void clockTick.value;
+    return Math.floor(
+      localElapsed +
+        (localStartedAt === undefined ? 0 : performance.now() - localStartedAt),
+    );
+  });
+  function tick() {
+    clockTick.value++;
+  }
+  function stopClock() {
+    if (localStartedAt !== undefined)
+      localElapsed += Math.max(0, performance.now() - localStartedAt);
+    localStartedAt = undefined;
+    tick();
+  }
+  function adopt(snapshot: AttemptSnapshot, resetClock = false) {
+    const previous = attempt.value;
+    attempt.value = snapshot;
+    timingSequence = Math.max(timingSequence, snapshot.progress.timingSequence);
+    if (
+      resetClock ||
+      previous?.attemptId !== snapshot.attemptId ||
+      snapshot.status !== "PLAYING"
+    ) {
+      localStartedAt = undefined;
+      localElapsed = snapshot.progress.elapsedMillis;
+      timingSequence = snapshot.progress.timingSequence;
+    }
+    if (
+      localStartedAt === undefined &&
+      snapshot.status === "PLAYING" &&
+      connected.value &&
+      playVisible.value &&
+      !pauseRequested.value &&
+      !pending.value
+    ) {
+      localStartedAt = performance.now();
+    }
+    tick();
+  }
+  function clearUncertain() {
+    uncertain = undefined;
+    outcomeUnknown.value = false;
+    sessionStorage.removeItem(uncertainKey);
+  }
+  async function mutate(path: string, body: string) {
+    if (!bootstrap.value) throw new Error("Connect to the local server first.");
+    uncertain = { path, body };
+    sessionStorage.setItem(uncertainKey, JSON.stringify(uncertain));
+    try {
+      const snapshot = await request(bootstrap.value, path, attemptSchema, {
+        method: "POST",
+        body,
+      });
+      clearUncertain();
+      return snapshot;
+    } catch (error) {
+      if (error instanceof HttpError && error.status < 500) {
+        clearUncertain();
+      } else {
+        outcomeUnknown.value = true;
+        connected.value = false;
+        stopClock();
+      }
+      throw error;
+    }
+  }
 
   function report(error: unknown) {
     errorMessage.value =
@@ -62,6 +151,7 @@ export const useGameStore = defineStore("game", () => {
       error instanceof ContractError
     ) {
       connected.value = false;
+      stopClock();
       statusMessage.value =
         "Edits are paused. Reconnect to restore the authoritative saved game.";
     }
@@ -86,6 +176,51 @@ export const useGameStore = defineStore("game", () => {
       const next = await loadBootstrap();
       if (currentEpoch !== epoch) return;
       bootstrap.value = next;
+      const savedMutation = sessionStorage.getItem(uncertainKey);
+      if (savedMutation) {
+        const parsed: unknown = JSON.parse(savedMutation);
+        if (
+          typeof parsed !== "object" ||
+          parsed === null ||
+          !("path" in parsed) ||
+          !("body" in parsed) ||
+          typeof parsed.path !== "string" ||
+          typeof parsed.body !== "string"
+        ) {
+          throw new ContractError(
+            "The pending action metadata is invalid; keep it for diagnosis.",
+          );
+        }
+        const payload: unknown = JSON.parse(parsed.body);
+        const match = /^\/api\/v1\/attempts\/([a-f0-9-]{36})\/commands$/.exec(
+          parsed.path,
+        );
+        if (match) {
+          const command = commandSchema.parse(payload);
+          uncertain = { path: parsed.path, body: parsed.body };
+          try {
+            const resolved = await request(
+              next,
+              `${parsed.path}/${encodeURIComponent(command.commandId)}?editorSessionId=${encodeURIComponent(editorSessionId)}`,
+              attemptSchema,
+            );
+            sessionStorage.setItem(attemptKey, resolved.attemptId);
+            clearUncertain();
+          } catch (error) {
+            if (!(error instanceof HttpError) || error.status !== 404)
+              throw error;
+            outcomeUnknown.value = true;
+          }
+        } else if (parsed.path === "/api/v1/attempts") {
+          creationSchema.parse(payload);
+          uncertain = { path: parsed.path, body: parsed.body };
+          outcomeUnknown.value = true;
+        } else {
+          throw new ContractError(
+            "The pending action path is invalid; keep it for diagnosis.",
+          );
+        }
+      }
       const savedId = sessionStorage.getItem(attemptKey);
       let snapshot: AttemptSnapshot | undefined;
       if (savedId) {
@@ -99,12 +234,32 @@ export const useGameStore = defineStore("game", () => {
         }
       }
       if (currentEpoch !== epoch) return;
-      attempt.value = snapshot;
+      if (
+        snapshot?.status === "PLAYING" &&
+        snapshot.editorSessionId === editorSessionId &&
+        !outcomeUnknown.value
+      ) {
+        snapshot = await mutate(
+          `/api/v1/attempts/${snapshot.attemptId}/commands`,
+          jsonBody(commandSchema, {
+            commandId: crypto.randomUUID(),
+            expectedRevision: snapshot.revision,
+            editorSessionId,
+            type: "PAUSE",
+          }),
+        );
+      }
       selectedCell.value = undefined;
       connected.value = true;
+      pauseRequested.value = false;
+      if (snapshot) adopt(snapshot, true);
+      else attempt.value = undefined;
       statusMessage.value = snapshot
         ? "Saved game restored from the local server."
         : "Connected. Start a puzzle to play.";
+      if (outcomeUnknown.value)
+        statusMessage.value =
+          "An action's outcome is unknown. Resolve it before editing.";
     } catch (error) {
       report(error);
       statusMessage.value =
@@ -125,6 +280,7 @@ export const useGameStore = defineStore("game", () => {
       if (currentEpoch !== epoch) return;
       if (instance.processInstanceId !== bootstrap.value?.processInstanceId) {
         connected.value = false;
+        stopClock();
         statusMessage.value =
           "The Java server restarted. Reconnect before editing.";
         return;
@@ -136,7 +292,7 @@ export const useGameStore = defineStore("game", () => {
         attempt.value?.attemptId === snapshot.attemptId &&
         snapshot.revision >= attempt.value.revision
       ) {
-        attempt.value = snapshot;
+        adopt(snapshot);
       }
     } catch (error) {
       if (currentEpoch === epoch) report(error);
@@ -146,7 +302,13 @@ export const useGameStore = defineStore("game", () => {
   }
 
   async function startPuzzle(): Promise<boolean> {
-    if (!connected.value || pending.value || !bootstrap.value) return false;
+    if (
+      !connected.value ||
+      pending.value ||
+      outcomeUnknown.value ||
+      !bootstrap.value
+    )
+      return false;
     pending.value = true;
     ++epoch;
     errorMessage.value = "";
@@ -187,20 +349,15 @@ export const useGameStore = defineStore("game", () => {
             `Generation ended: ${job.value.status} (${job.value.termination})`,
         );
       }
-      const created = await request(
-        bootstrap.value,
+      const created = await mutate(
         "/api/v1/attempts",
-        attemptSchema,
-        {
-          method: "POST",
-          body: jsonBody(creationSchema, {
-            requestId: crypto.randomUUID(),
-            generationJobId: job.value.jobId,
-            editorSessionId,
-          }),
-        },
+        jsonBody(creationSchema, {
+          requestId: crypto.randomUUID(),
+          generationJobId: job.value.jobId,
+          editorSessionId,
+        }),
       );
-      attempt.value = created;
+      adopt(created, true);
       sessionStorage.setItem(attemptKey, created.attemptId);
       selectedCell.value = undefined;
       statusMessage.value =
@@ -236,10 +393,33 @@ export const useGameStore = defineStore("game", () => {
     }
   }
 
-  async function command(type: "SET_VALUE" | "TAKEOVER", value?: number) {
+  async function command(type: CommandType, value?: number) {
     const current = attempt.value;
     const cell = selectedCell.value;
-    if (!connected.value || pending.value || !bootstrap.value || !current)
+    if (
+      !connected.value ||
+      pending.value ||
+      outcomeUnknown.value ||
+      !bootstrap.value ||
+      !current
+    )
+      return;
+    if (type !== "TAKEOVER" && !ownsEditor.value) return;
+    if (
+      !["TAKEOVER", "RESUME", "PAUSE", "HEARTBEAT"].includes(type) &&
+      !editable.value
+    )
+      return;
+    if (
+      [
+        "SET_VALUE",
+        "CYCLE_VALUE",
+        "TOGGLE_NOTE",
+        "CANDIDATES",
+        "REVEAL",
+      ].includes(type) &&
+      (cell === undefined || current.givens[cell] !== 0)
+    )
       return;
     if (
       type === "SET_VALUE" &&
@@ -251,35 +431,55 @@ export const useGameStore = defineStore("game", () => {
     )
       return;
     pending.value = true;
+    stopClock();
+    const proposal =
+      current.status === "PLAYING" && type !== "TAKEOVER"
+        ? {
+            timingSequence: ++timingSequence,
+            elapsedMillis: Math.floor(localElapsed),
+          }
+        : {};
     ++epoch;
     errorMessage.value = "";
     try {
-      attempt.value = await request(
-        bootstrap.value,
+      const snapshot = await mutate(
         `/api/v1/attempts/${current.attemptId}/commands`,
-        attemptSchema,
-        {
-          method: "POST",
-          body: jsonBody(commandSchema, {
-            commandId: crypto.randomUUID(),
-            expectedRevision: current.revision,
-            editorSessionId,
-            type,
-            ...(type === "SET_VALUE" ? { cellIndex: cell, value } : {}),
-          }),
-        },
+        jsonBody(commandSchema, {
+          commandId: crypto.randomUUID(),
+          expectedRevision: current.revision,
+          editorSessionId,
+          type,
+          ...proposal,
+          ...([
+            "SET_VALUE",
+            "CYCLE_VALUE",
+            "TOGGLE_NOTE",
+            "CANDIDATES",
+            "REVEAL",
+          ].includes(type)
+            ? { cellIndex: cell }
+            : {}),
+          ...(value !== undefined ? { value } : {}),
+        }),
       );
+      adopt(snapshot, true);
       statusMessage.value =
-        attempt.value.status === "COMPLETED"
+        snapshot.status === "COMPLETED"
           ? "Puzzle complete. Your result has been saved."
           : type === "TAKEOVER"
             ? "This tab now controls the saved game."
-            : "Move saved to the local server.";
+            : type === "PAUSE"
+              ? "Game paused. Closed and hidden time is not counted."
+              : type === "RESUME"
+                ? "Game resumed."
+                : type === "HEARTBEAT"
+                  ? "Active time saved."
+                  : "Move saved to the local server.";
     } catch (error) {
       report(error);
       if (error instanceof HttpError && error.status === 409) {
         try {
-          attempt.value = await loadAttempt(current.attemptId);
+          adopt(await loadAttempt(current.attemptId), true);
           statusMessage.value = ownsEditor.value
             ? "Saved game refreshed. Review it and retry your move."
             : "Another tab controls this game. Take control before editing.";
@@ -287,6 +487,104 @@ export const useGameStore = defineStore("game", () => {
           report(refreshError);
         }
       }
+    } finally {
+      pending.value = false;
+      if (pauseRequested.value) {
+        if (
+          type !== "PAUSE" &&
+          connected.value &&
+          !outcomeUnknown.value &&
+          attempt.value &&
+          ["READY", "PLAYING"].includes(attempt.value.status)
+        ) {
+          void command("PAUSE");
+        } else if (connected.value && !outcomeUnknown.value)
+          pauseRequested.value = false;
+      } else if (attempt.value) adopt(attempt.value);
+    }
+  }
+
+  async function pause() {
+    playVisible.value = false;
+    stopClock();
+    if (
+      !attempt.value ||
+      !ownsEditor.value ||
+      !["READY", "PLAYING"].includes(attempt.value.status)
+    )
+      return;
+    pauseRequested.value = true;
+    if (!pending.value) await command("PAUSE");
+  }
+  async function resume() {
+    playVisible.value = true;
+    pauseRequested.value = false;
+    await command("RESUME");
+  }
+  async function heartbeat() {
+    if (
+      playVisible.value &&
+      editable.value &&
+      attempt.value?.status === "PLAYING"
+    ) {
+      await command("HEARTBEAT");
+    } else await refreshAttempt();
+  }
+  async function resolvePending() {
+    if (!uncertain || !connected.value || pending.value) return;
+    pending.value = true;
+    ++epoch;
+    stopClock();
+    try {
+      const snapshot = await mutate(uncertain.path, uncertain.body);
+      sessionStorage.setItem(attemptKey, snapshot.attemptId);
+      adopt(snapshot, true);
+      pauseRequested.value = snapshot.status === "PLAYING";
+      statusMessage.value =
+        "Pending action resolved against the Java database.";
+    } catch (error) {
+      report(error);
+      if (error instanceof HttpError && error.status === 409 && attempt.value) {
+        try {
+          adopt(await loadAttempt(attempt.value.attemptId), true);
+          pauseRequested.value = attempt.value?.status === "PLAYING";
+        } catch (refreshError) {
+          report(refreshError);
+        }
+      }
+    } finally {
+      pending.value = false;
+      if (pauseRequested.value && connected.value && !outcomeUnknown.value)
+        await command("PAUSE");
+      else if (attempt.value) adopt(attempt.value);
+    }
+  }
+  async function restart() {
+    const current = attempt.value;
+    if (!connected.value || pending.value || outcomeUnknown.value || !current)
+      return;
+    await pause();
+    if (!connected.value || pending.value || outcomeUnknown.value) return;
+    pending.value = true;
+    ++epoch;
+    try {
+      const snapshot = await mutate(
+        "/api/v1/attempts",
+        jsonBody(creationSchema, {
+          requestId: crypto.randomUUID(),
+          restartAttemptId: current.attemptId,
+          editorSessionId,
+        }),
+      );
+      adopt(snapshot, true);
+      sessionStorage.setItem(attemptKey, snapshot.attemptId);
+      selectedCell.value = undefined;
+      pauseRequested.value = false;
+      playVisible.value = true;
+      statusMessage.value =
+        "Restarted as a new replay attempt. Original history is unchanged.";
+    } catch (error) {
+      report(error);
     } finally {
       pending.value = false;
     }
@@ -308,11 +606,30 @@ export const useGameStore = defineStore("game", () => {
     cancelling,
     ownsEditor,
     maxEntry,
+    editable,
+    noteMode,
+    cycleMode,
+    playVisible,
+    elapsedMillis,
+    outcomeUnknown,
+    pauseRequested,
+    tick,
+    heartbeat,
+    pause,
+    resume,
+    command,
+    restart,
+    resolvePending,
     connect,
     refreshAttempt,
     startPuzzle,
     cancelGeneration,
-    enterValue: (value: number) => command("SET_VALUE", value),
+    enterValue: (value: number) =>
+      command(
+        noteMode.value && value !== 0 ? "TOGGLE_NOTE" : "SET_VALUE",
+        value,
+      ),
+    cycleValue: (direction: 1 | -1) => command("CYCLE_VALUE", direction),
     takeControl: () => command("TAKEOVER"),
   };
 });

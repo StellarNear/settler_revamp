@@ -33,6 +33,26 @@ export const jobSchema = z.strictObject({
   elapsedMillis: integer,
   visitedNodes: integer,
 });
+export const progressSchema = z.strictObject({
+  notes: z.array(integer.max(511)).min(1).max(240),
+  elapsedMillis: integer,
+  started: z.boolean(),
+  replay: z.boolean(),
+  valueEntryCount: integer,
+  wrongEntryCount: integer.nullable(),
+  candidateRequests: integer,
+  explanationRequests: integer,
+  reveals: integer,
+  continuousConflictsUsed: z.boolean(),
+  showConflicts: z.boolean(),
+  canUndo: z.boolean(),
+  canRedo: z.boolean(),
+  hasCheckpoint: z.boolean(),
+  conflicts: z.array(integer.max(239)).max(240),
+  candidates: z.array(integer.min(1).max(9)).max(9),
+  helpMessage: z.string(),
+  timingSequence: integer,
+});
 export const attemptSchema = z
   .strictObject({
     attemptId: z.uuid(),
@@ -47,14 +67,18 @@ export const attemptSchema = z
     editorSessionId: z.string().min(16).max(128),
     editorLeaseExpiresAt: z.iso.datetime({ offset: true }).nullable(),
     moveCount: integer,
+    progress: progressSchema,
   })
   .superRefine((attempt, context) => {
     const cells = attempt.columns * attempt.rows;
     if (
       cells > 240 ||
-      [attempt.regionIds, attempt.givens, attempt.values].some(
-        (a) => a.length !== cells,
-      )
+      [
+        attempt.regionIds,
+        attempt.givens,
+        attempt.values,
+        attempt.progress.notes,
+      ].some((a) => a.length !== cells)
     ) {
       context.addIssue({
         code: "custom",
@@ -64,6 +88,19 @@ export const attemptSchema = z
     }
     const sizes = new Map<number, number>();
     for (const id of attempt.regionIds) sizes.set(id, (sizes.get(id) ?? 0) + 1);
+    if (
+      attempt.progress.notes.some(
+        (mask, index) =>
+          mask >= 2 ** (sizes.get(attempt.regionIds[index]) ?? 0) ||
+          (mask !== 0 && attempt.values[index] !== 0),
+      ) ||
+      attempt.progress.conflicts.some((index) => index >= cells)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Invalid manual notes or conflict indices",
+      });
+    }
     if (
       [...sizes.values()].some((size) => size > 9) ||
       attempt.values.some(
@@ -88,6 +125,8 @@ const commandFields = {
   commandId: identifier,
   expectedRevision: integer,
   editorSessionId: editorSession,
+  timingSequence: integer.optional(),
+  elapsedMillis: integer.optional(),
 };
 export const commandSchema = z.discriminatedUnion("type", [
   z.strictObject({
@@ -98,16 +137,50 @@ export const commandSchema = z.discriminatedUnion("type", [
   }),
   z.strictObject({
     ...commandFields,
-    type: z.enum(["PAUSE", "RESUME", "TAKEOVER"]),
+    type: z.enum([
+      "PAUSE",
+      "RESUME",
+      "TAKEOVER",
+      "UNDO",
+      "REDO",
+      "CHECKPOINT",
+      "RESTORE_CHECKPOINT",
+      "CHECK",
+      "SHOW_CONFLICTS",
+      "CANDIDATES",
+      "EXPLAIN",
+      "REVEAL",
+      "HEARTBEAT",
+    ]),
     cellIndex: integer.max(239).nullable().optional(),
     value: integer.max(9).nullable().optional(),
   }),
+  z.strictObject({
+    ...commandFields,
+    type: z.literal("CYCLE_VALUE"),
+    cellIndex: integer.max(239),
+    value: z.union([z.literal(-1), z.literal(1)]),
+  }),
+  z.strictObject({
+    ...commandFields,
+    type: z.literal("TOGGLE_NOTE"),
+    cellIndex: integer.max(239),
+    value: integer.min(1).max(9),
+  }),
 ]);
-export const creationSchema = z.strictObject({
-  requestId: identifier,
-  generationJobId: z.uuid(),
-  editorSessionId: editorSession,
-});
+export type CommandType = z.infer<typeof commandSchema>["type"];
+export const creationSchema = z
+  .strictObject({
+    requestId: identifier,
+    generationJobId: z.uuid().optional(),
+    restartAttemptId: z.uuid().optional(),
+    editorSessionId: editorSession,
+  })
+  .refine(
+    (value) =>
+      Boolean(value.generationJobId) !== Boolean(value.restartAttemptId),
+    "Choose generation or restart",
+  );
 export const generationSchema = z
   .strictObject({
     columns: integer.min(1).max(240),
@@ -127,6 +200,7 @@ export const resultSchema = z.strictObject({
   moveCount: integer,
   completedAt: z.iso.datetime({ offset: true }),
   playerTag: z.string().max(32).nullable(),
+  progress: progressSchema.nullable(),
 });
 
 export function jsonBody<T>(schema: z.ZodType<T>, value: unknown): string {
@@ -204,7 +278,7 @@ export async function request<T>(
     await fetch(path, {
       ...init,
       headers,
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(5_000),
     }),
     schema,
   );

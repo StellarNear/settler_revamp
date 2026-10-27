@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { initialProgress } from "./testFixtures";
 import {
   attemptSchema,
   bootstrapSchema,
@@ -26,6 +27,7 @@ export const fixture = {
   editorSessionId: "test-editor-session",
   editorLeaseExpiresAt: "2026-10-27T15:00:00Z",
   moveCount: 0,
+  progress: initialProgress,
 };
 export const bootstrapFixture = {
   apiVersion: "v1",
@@ -74,6 +76,7 @@ describe("v1 HTTP contracts", () => {
       moveCount: 1,
       completedAt: fixture.editorLeaseExpiresAt,
       playerTag: null,
+      progress: null,
     };
     expect(resultSchema.parse(JSON.parse(JSON.stringify(result)))).toEqual(
       result,

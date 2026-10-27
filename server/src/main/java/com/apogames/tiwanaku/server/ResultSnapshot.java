@@ -6,5 +6,6 @@ public record ResultSnapshot(
         int[] values,
         int moveCount,
         String completedAt,
-        String playerTag) {
+        String playerTag,
+        AttemptSnapshot.ProgressSnapshot progress) {
 }

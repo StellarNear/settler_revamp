@@ -108,8 +108,9 @@ Only replace the launch JAR after stopping any process using it.
 Routes are `/setup`, `/play`, `/history`, and `/settings`. Java serves their SPA
 entry without caching HTML; missing API/asset paths remain 404, never SPA HTML.
 Pinia holds validated server snapshots and transient selection/setup state only.
-Browser session storage contains editor/attempt IDs, not boards or results.
-History management, durable settings, full EN/DE translations, advanced controls
+Browser session storage contains editor/attempt IDs and any unresolved command's
+immutable retry payload, not authoritative boards or results.
+History management, durable settings, full EN/DE translations
 and terrain artwork remain later packets; the scaffold labels unavailable views
 honestly.
 
@@ -126,10 +127,10 @@ with a fresh process token and saved snapshot.
 | `GET /api/v1/bootstrap` | `apiVersion=v1`, process UUID/token, `maxCells=240`, `maxRegionSize=9` |
 | Generation submission | columns/rows (at most 240 cells), maximum 5..9, EASY/MEDIUM/HARD, safe-integer seed |
 | Generation job | UUID, explicit status/termination, nullable error, elapsed milliseconds and visited nodes |
-| Attempt creation | request ID, completed job UUID, editor-session ID; idempotent by request ID |
-| Attempt snapshot | attempt/puzzle UUIDs, dimensions, region IDs/givens/values, status, revision, owner/lease, move count |
-| Command | command ID, expected revision, editor-session ID, SET_VALUE/PAUSE/RESUME/TAKEOVER; SET_VALUE has cell index/value |
-| `GET /api/v1/attempts/{id}/result` | result/attempt UUIDs, completed values, move count, ISO completion instant, nullable player tag; 404 until a result exists |
+| Attempt creation | request ID, exactly one completed job UUID or restart-attempt UUID, editor-session ID; idempotent by request ID |
+| Attempt snapshot | attempt/puzzle UUIDs, dimensions, region IDs/givens/values, status, revision, owner/lease, move count and progress (notes/time/counters/history availability/help) |
+| Command | command ID, expected revision, editor-session ID and command type; cell/value fields where required; optional paired timing sequence/cumulative milliseconds |
+| `GET /api/v1/attempts/{id}/result` | result/attempt UUIDs, completed values, move count, ISO completion instant, nullable player tag/progress; 404 until a result exists |
 | API rejection | HTTP status plus ProblemDetail `detail` for application conflicts; no success-shaped fallback |
 
 No mutation is optimistically applied. Only one mutation is in flight; extra
@@ -138,6 +139,54 @@ responses overwriting newer snapshots. Future schema changes require a new
 Flyway migration; do not rewrite the released `V1__initial_local_store.sql`.
 The explicit prototype compatibility migration remains separate and preserves
 its historical notes column.
+
+### P04 gameplay controls and saved time
+
+Select a cell and use digits or the number pad; Delete/Backspace/0 clears it.
+Arrows move selection. Givens are selectable but immutable. **Manual notes (N)**
+toggles numeric pencil marks in blank cells; these are not computed candidates.
+Enable **Legacy click cycle** for left-click increment and right-click decrement
+through blank and the region's values. Extra input during a pending save is
+dropped, not queued; selection remains responsive.
+
+Undo/redo retain up to 100 board/note snapshots. Checkpoint restore is one undoable
+action; replacing/restoring a checkpoint asks for confirmation. Neither history
+nor restore reduces elapsed time, entry counts, or recorded assistance.
+**New puzzle** opens generation settings without destroying the existing attempt
+on failure. **Restart this puzzle** confirms creation of a fresh replay attempt
+against the same puzzle, retaining the original.
+
+In-range entries may conflict: this is deliberate, not an accepted win. Duplicates
+are highlighted by **Check conflicts** or a full invalid board. Continuous
+highlighting is opt-in and permanently records its use. Candidates use only
+visible region/eight-neighbor exclusions, not a global solvability promise.
+Explanation currently handles singles only; reveal asks for confirmation and is
+counted separately. A changed nonzero assignment counts as an entry; clears,
+notes, selection and no-ops do not. Noncanonical-entry counts are hidden until
+completion, which Java validates and saves exactly once.
+
+The timer starts on the first actual value change, not selection, notes or help.
+Pause, route exit, hidden pages, reload and lease expiry suspend play. Resume is
+explicit; an unstarted game stays READY. Closed/disconnected time is never added.
+While visibly playing, a five-second heartbeat saves cumulative active time
+(15-second editor lease, one-second proposal tolerance). Timing uses a separate
+sequence, not gameplay revision. Pending requests freeze the local timer; their
+latency can undercount active time rather than fabricate it.
+
+Crash recovery uses the last committed total, including commits whose response
+was lost. The healthy-operation loss target is the five-second unsaved interval
+plus an in-flight request, not a hard bound under stalled networking/scheduling.
+Fake-clock verification measured four seconds lost after a five-second save and
+four further unsaved seconds; a one-hour closed interval added zero.
+An unresolved request blocks edits and retains its exact ID/payload. Reconnect
+checks the receipt/current server state; **Resolve pending action** retries only
+that same payload when necessary. Do not clear browser session storage while
+diagnosing an unresolved save.
+
+Flyway V2 adds progress without rewriting V1 or deleting old records. Pre-P04
+attempts have no recorded elapsed/assistance history; their new timer starts from
+zero, not a reconstructed historical duration. Full history/import/settings and
+terrain artwork remain later packets.
 
 ## Legacy application
 
