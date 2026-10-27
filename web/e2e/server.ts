@@ -27,7 +27,10 @@ export async function launchServer(
     [
       ...(userHome ? [`-Duser.home=${userHome}`] : []),
       "-jar",
-      resolve("../server/target/p02-build/tiwanaku.jar"),
+      resolve(
+        process.env.TIWANAKU_TEST_JAR ??
+          "../server/target/p02-build/tiwanaku.jar",
+      ),
       `--server.port=${port}`,
     ],
     {

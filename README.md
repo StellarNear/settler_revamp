@@ -8,13 +8,24 @@ From the repository root, using Java 25:
 java -jar server\target\tiwanaku.jar
 ```
 
+For an explicit clean-stop console on Windows, use:
+
+```powershell
+java -jar server\target\tiwanaku.jar --console
+# Type quit and press Enter in that terminal when finished.
+```
+
+In console mode, closing standard input also stops the server. Without `--console`,
+the original launch behavior is unchanged; stop it with Ctrl+C in its terminal.
+Opening/closing the browser alone does not start/stop Java.
+
 Open `http://localhost:8080`. Java must remain running. The Vue UI is bundled
 in the JAR; Node and an internet connection are not runtime requirements.
 The minimal engine/server slice is verified. Internet-disconnected cold-launch
 testing was explicitly waived by the user; it has not been reported as passed.
 Gameplay, durable data, the terrain/responsive visual rework and lightweight
 P07 reliability/accessibility checks are implemented.
-The overall rewrite is still in progress; P08-P10 packaging, explorer
+Runnable packaging is implemented in P08. The overall rewrite is still in progress; P09-P10 explorer
 and cutover work remain.
 
 If the browser reports `ERR_CONNECTION_REFUSED`, check that the Java terminal
@@ -74,37 +85,99 @@ before normal launch. Keep the original data directory untouched.
 
 ### Building and checking the current rewrite
 
+Build prerequisites: **JDK 25**, **Node >=22.12**, and **npm** on PATH.
+Set `JAVA_HOME` to the JDK 25 directory. These are build prerequisites; the finished
+game needs only Java 25 and a browser. Maven/npm may need internet to fetch build
+dependencies on the first build. Do not disable certificate checks if your
+organization's Maven proxy certificate is missing.
+
+Stop any Tiwanaku process using the output JAR before building. From the repository
+root, this one command installs the locked frontend dependencies, checks/builds Vue,
+tests Java, packages the UI/API, and runs an isolated standalone-JAR smoke:
+
 ```powershell
-Push-Location web
-npm.cmd ci
-npm.cmd run typecheck
-npm.cmd run lint
-npm.cmd run format:check
-npm.cmd run test:unit -- --run
-npm.cmd run build
-Pop-Location
-.\mvnw.cmd -B verify
-Copy-Item server\target\p02-build\tiwanaku.jar server\target\tiwanaku.jar
+.\mvnw.cmd -Prelease clean verify
 ```
 
-The isolated Maven output directory avoids pre-existing compiled server classes.
-The integrated release build is a later packet. After packaging, run the real-server
-browser tests:
+Use `-o` only when Maven dependencies/plugins are already cached; it does not put
+npm offline. The release frontend always runs `npm ci` from the lockfile and
+typecheck/lint/format/unit/build checks; a missing tool, dependency failure or failed
+check fails the build. Do not use a previous JAR as evidence of a failed build.
+
+The verified output is **`server\target\tiwanaku.jar`**; no manual copy is needed.
+Clean release classes live in `server\target\release-build`, separate from
+historical generated files and the existing non-release `p02-build` output.
+The smoke uses scratch homes/data/working directories and dynamically allocated
+loopback ports. It verifies assets/routes, completion/retry persistence after a
+working-directory/port change, custom data storage, port conflicts, second-instance
+refusal and graceful console shutdown. Node/npm are absent from its Java child's
+PATH. It never uses the real saved database.
+
+After a release build, run the full real-server browser tests against that exact JAR:
 
 ```powershell
 Push-Location web
 # Use installed Edge on Windows, or install Playwright Chromium with:
 # npx.cmd playwright install chromium
 $env:PLAYWRIGHT_CHANNEL = "msedge"
+$env:TIWANAKU_TEST_JAR = (Resolve-Path ..\server\target\tiwanaku.jar).Path
 npm.cmd run test:e2e
+Remove-Item Env:\TIWANAKU_TEST_JAR
 Remove-Item Env:\PLAYWRIGHT_CHANNEL
 Pop-Location
 ```
 
-The test runner owns a Java process on port 18093, uses a unique temporary H2
-directory, and stops Java/removes that directory on normal teardown. An occupied
-port fails rather than reusing another server. It never uses the real saved database.
-Only replace the launch JAR after stopping any process using it.
+Browser tests need installed Edge or Playwright Chromium **only at build/test time**.
+The runner owns port 18093 (recovery/lifecycle cases use 18094-18097), uses unique
+temporary H2 directories and stops/removes its own children/data on teardown.
+Occupied ports fail instead of reusing another server. Without `TIWANAKU_TEST_JAR`
+the runner retains its original development default, `server\target\p02-build\tiwanaku.jar`.
+For fast development, build Vue with `npm.cmd run build` in `web`, then run
+`.\mvnw.cmd -B verify` without the release profile; it does not run npm for you
+and does not update the stable release JAR.
+
+The release profile pins archive entry timestamps in both Maven modules. The
+staging step always overwrites the stable JAR (reproducible timestamps cannot be
+used to decide whether it changed), and the smoke checks its SHA-256 against the
+newly packaged JAR before launching it. Byte-repeatability is checked with the
+same local JDK/Node/npm toolchain; this is not a cross-toolchain binary guarantee.
+
+### Standalone launch, ports and updates
+
+Copy the verified JAR anywhere, then use an absolute path if starting outside its
+directory. A JRE/JDK **25** must be installed; older Java cannot run its class files.
+No Node, npm, checkout, database server or warmed browser cache is required.
+Storage follows Java's user home, not the JAR/working directory.
+
+```powershell
+# Optional overrides, set in the same terminal before launching:
+$env:TIWANAKU_PORT = "8081"
+$env:TIWANAKU_DATA_DIR = "C:\TiwanakuData" # absolute path; choose your own writable location
+java -jar "C:\Games\Tiwanaku\tiwanaku.jar" --console
+# Once the printed URL is ready, open it manually or use:
+# Start-Process "http://localhost:8081"
+```
+
+The browser is not opened automatically. The printed URL, data directory and log
+directory are authoritative. An occupied port reports `Port ... was already in use`;
+choose another port or stop the known process yourself. A second process using the
+same data directory refuses to start even on a different port. Never delete
+`app.lock` or your database to bypass this guard.
+
+Before upgrading, keep the old JAR and download a full database backup from History.
+Stop Java cleanly, replace only the JAR and launch it against the same directory.
+Pending schema upgrades require a verified automatic pre-upgrade ZIP; incomplete
+or newer schemas fail explicitly. **Do not run an older JAR against newer-schema
+data.** For rollback, use the matching old JAR with its pre-upgrade ZIP extracted
+into a separate empty directory. Keep the current database untouched.
+`upgrade-incomplete.txt` means restore/investigate rather than deleting the marker
+or repeatedly repairing. Detailed backup/restore behavior is documented below.
+
+P08 launch/build/browser verification was performed on **Windows with Java 25 and
+Edge**. Other OSes and public release/installer workflows are not certified here.
+Real disconnected-internet cold launch and screen-reader testing remain explicitly
+deferred under the approved scope; local-only asset and empty-profile tests are not
+reported as substitutes for those manual checks.
 
 ### P03 scaffold and frozen v1 boundaries
 

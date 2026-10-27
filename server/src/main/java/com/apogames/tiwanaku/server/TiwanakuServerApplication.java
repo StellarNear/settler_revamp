@@ -16,6 +16,17 @@ public class TiwanakuServerApplication {
             System.out.println("Local database migration complete. Start Tiwanaku normally.");
             return;
         }
-        SpringApplication.run(TiwanakuServerApplication.class, args);
+        var application = SpringApplication.run(TiwanakuServerApplication.class, args);
+        if (java.util.Arrays.asList(args).contains("--console")) {
+            try (application) {
+                System.out.println("Type quit and press Enter to stop Tiwanaku cleanly.");
+                var input = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(System.in, java.nio.charset.StandardCharsets.UTF_8));
+                String line;
+                while ((line = input.readLine()) != null && !"quit".equalsIgnoreCase(line.trim())) {
+                    System.out.println("Unknown console command. Type quit to stop, or use the printed localhost URL to play.");
+                }
+            }
+        }
     }
 }

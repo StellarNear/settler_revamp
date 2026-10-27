@@ -20,6 +20,20 @@ export default ts.config(
     languageOptions: { globals: { process: "readonly", console: "readonly" } },
   },
   {
+    files: ["scripts/*.mjs"],
+    languageOptions: {
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        fetch: "readonly",
+        AbortSignal: "readonly",
+        crypto: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+      },
+    },
+  },
+  {
     files: ["**/*.vue"],
     languageOptions: { parserOptions: { parser: ts.parser } },
   },

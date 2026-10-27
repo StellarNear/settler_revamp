@@ -117,8 +117,7 @@ Thumbs.db
 
 teavm/build/
 
-/server/target/p02-build/
-/server/target/tiwanaku.jar
+/server/target/
 /web/node_modules/
 /web/dist/
 /web/*.tsbuildinfo
