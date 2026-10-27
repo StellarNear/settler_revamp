@@ -1,30 +1,34 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { finished } from "node:stream/promises";
 
-export default async function setup() {
+export async function launchServer(
+  port: number,
+  directory: string,
+  userHome?: string,
+): Promise<() => Promise<void>> {
   const probe = createServer();
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     probe.once("error", reject);
-    probe.listen(18093, "127.0.0.1", resolve);
+    probe.listen(port, "127.0.0.1", resolve);
   });
-  await new Promise((resolve, reject) =>
+  await new Promise<void>((resolve, reject) =>
     probe.close((error) => (error ? reject(error) : resolve())),
   );
-  const directory = await mkdtemp(join(tmpdir(), "tiwanaku-e2e-"));
-  const outputPath = join(directory, "launch.log");
+  const outputPath = join(directory, `launch-${port}.log`);
   const output = createWriteStream(outputPath);
   const java = spawn(
     "java",
     [
+      ...(userHome ? [`-Duser.home=${userHome}`] : []),
       "-jar",
       resolve("../server/target/p02-build/tiwanaku.jar"),
-      "--server.port=18093",
+      `--server.port=${port}`,
     ],
     {
       env: { ...process.env, TIWANAKU_DATA_DIR: directory },
@@ -34,8 +38,8 @@ export default async function setup() {
   java.stdout.pipe(output, { end: false });
   java.stderr.pipe(output, { end: false });
   let exited = false;
-  let spawnError;
-  const exit = new Promise((resolve) => {
+  let spawnError: Error | undefined;
+  const exit = new Promise<void>((resolve) => {
     java.once("exit", () => {
       exited = true;
       resolve();
@@ -52,7 +56,8 @@ export default async function setup() {
     await Promise.all([finished(java.stdout), finished(java.stderr)]);
     output.end();
     await finished(output);
-    await rm(directory, { recursive: true, force: true });
+    await mkdir("test-results", { recursive: true });
+    await copyFile(outputPath, resolve(`test-results/server-${port}.log`));
   }
   let ready = false;
   try {
@@ -61,18 +66,19 @@ export default async function setup() {
       if (spawnError) throw spawnError;
       if (exited) throw new Error(await readFile(outputPath, "utf8"));
       try {
-        const response = await globalThis.fetch(
-          "http://localhost:18093/api/v1/bootstrap",
-          {
-            signal: globalThis.AbortSignal.timeout(1_000),
-          },
+        const response = await fetch(
+          `http://localhost:${port}/api/v1/bootstrap`,
+          { signal: AbortSignal.timeout(1_000) },
         );
         if (response.ok) {
           ready = true;
           return stop;
         }
       } catch (error) {
-        if (!(error instanceof TypeError) && error.name !== "TimeoutError")
+        if (
+          !(error instanceof TypeError) &&
+          !(error instanceof Error && error.name === "TimeoutError")
+        )
           throw error;
       }
       await delay(100);
@@ -82,5 +88,22 @@ export default async function setup() {
     );
   } finally {
     if (!ready) await stop();
+  }
+}
+
+export default async function setup() {
+  const directory = await mkdtemp(join(tmpdir(), "tiwanaku-e2e-"));
+  try {
+    const stop = await launchServer(18093, directory);
+    return async () => {
+      try {
+        await stop();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    };
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true });
+    throw error;
   }
 }

@@ -1,10 +1,35 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from "vue";
+import { onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useGameStore } from "./stores/game";
+import { useDataStore } from "./stores/data";
+import { useRoute } from "vue-router";
 
+const route = useRoute();
 const game = useGameStore();
-const { t } = useI18n();
+const data = useDataStore();
+const { t, locale } = useI18n();
+watch(
+  () => game.connected,
+  (connected) => {
+    if (connected) void data.load();
+  },
+);
+watch(
+  () => data.settings,
+  (settings) => {
+    if (!settings) return;
+    locale.value = settings.locale;
+    document.documentElement.lang = settings.locale;
+    document.documentElement.dataset.theme = settings.theme;
+    document.documentElement.dataset.reducedDetail = String(
+      settings.reducedDetail,
+    );
+    game.preset = settings.preset;
+    game.maxRegionSize = settings.maxRegionSize;
+    game.difficulty = settings.difficulty;
+  },
+);
 let refreshTimer: number | undefined;
 let displayTimer: number | undefined;
 onMounted(() => {
@@ -19,7 +44,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="shell">
+  <div class="shell" :class="{ 'play-shell': route.path === '/play' }">
     <a class="skip-link" href="#content">{{ t("skip") }}</a>
     <header class="topbar">
       <RouterLink class="wordmark" to="/setup" aria-label="Tiwanaku home"
@@ -47,6 +72,7 @@ onUnmounted(() => {
       </p>
     </section>
     <div class="server-status" aria-live="polite">
+      <p v-if="data.error" class="error" role="alert">{{ data.error }}</p>
       <p role="status">{{ game.statusMessage }}</p>
       <p v-if="game.errorMessage" class="error" role="alert">
         {{ game.errorMessage }}

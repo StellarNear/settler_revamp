@@ -156,6 +156,9 @@ test("real Java generation, routed play, saved entry and shell navigation", asyn
   await page
     .getByRole("combobox", { name: "Language", exact: true })
     .selectOption("de");
+  await page
+    .getByRole("button", { name: "Save settings", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Einstellungen", exact: true }),
   ).toBeVisible();

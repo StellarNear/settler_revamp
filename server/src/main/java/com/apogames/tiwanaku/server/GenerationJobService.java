@@ -48,7 +48,7 @@ public final class GenerationJobService implements AutoCloseable {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "Generation job capacity is full");
         }
         UUID id = UUID.randomUUID();
-        Job job = new Job(id);
+        Job job = new Job(id, request);
         GenerationSpec spec;
         try {
             spec = new GenerationSpec(
@@ -104,6 +104,13 @@ public final class GenerationJobService implements AutoCloseable {
         return jobs.get(id).result;
     }
 
+    public HistoryEntry.PuzzleSettings settings(UUID id) {
+        result(id);
+        var request = jobs.get(id).request;
+        return new HistoryEntry.PuzzleSettings(request.columns(), request.rows(), request.maxRegionSize(),
+                request.difficulty().name(), Long.toString(request.seed()), "exact-cover-v1", "localhost-generator-v1");
+    }
+
     private void run(Job job, GenerationSpec spec) {
         job.startedAt = Instant.now();
         try {
@@ -139,6 +146,7 @@ public final class GenerationJobService implements AutoCloseable {
 
     private static final class Job {
         private final UUID id;
+        private final GenerationRequest request;
         private final CancellationToken cancellationToken = new CancellationToken();
         private volatile String status = "QUEUED";
         private volatile boolean cancellationRequested;
@@ -148,8 +156,9 @@ public final class GenerationJobService implements AutoCloseable {
         private volatile Instant startedAt;
         private volatile Instant completedAt;
 
-        private Job(UUID id) {
+        private Job(UUID id, GenerationRequest request) {
             this.id = id;
+            this.request = request;
         }
 
         private void complete(GeneratedPuzzle result) {

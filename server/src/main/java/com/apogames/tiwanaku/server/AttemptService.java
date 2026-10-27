@@ -3,21 +3,15 @@ package com.apogames.tiwanaku.server;
 import com.apogames.tiwanaku.engine.BoardRules;
 import com.apogames.tiwanaku.engine.GeneratedPuzzle;
 import com.apogames.tiwanaku.engine.PuzzleDefinition;
-import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
-import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -29,7 +23,7 @@ public final class AttemptService {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
     private final GenerationJobService jobs;
-    private final ObjectMapper objectMapper;
+    private final StoreJson store;
     private final GameplayClock clock;
 
     public AttemptService(
@@ -41,7 +35,7 @@ public final class AttemptService {
         this.jdbc = jdbc;
         this.transactions = transactions;
         this.jobs = jobs;
-        this.objectMapper = objectMapper;
+        this.store = new StoreJson(objectMapper);
         this.clock = clock;
     }
 
@@ -78,19 +72,24 @@ public final class AttemptService {
         int[] values = puzzle.givens();
         Instant leaseExpiresAt = clock.now().plusSeconds(EDITOR_LEASE_SECONDS);
         GameProgress progress = GameProgress.initial(values.length, original != null);
+        LocalSettings defaults = jdbc.queryForObject("SELECT settings_json FROM local_settings WHERE singleton_id=1",
+                (rs, row) -> fromJson(rs.getString(1), LocalSettings.class));
+        progress.showConflicts = defaults.showConflicts();
+        progress.continuousConflictsUsed = defaults.showConflicts();
 
         return transactions.execute(status -> {
             if (original == null) jdbc.update(
                     """
-                    INSERT INTO puzzles (puzzle_id, columns_count, rows_count, region_ids, givens, solution)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO puzzles (puzzle_id, columns_count, rows_count, region_ids, givens, solution, generation_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     puzzleId.toString(),
                     puzzle.columns(),
                     puzzle.rows(),
                     json(puzzle.regionIds()),
                     json(puzzle.givens()),
-                    json(generated.solution()));
+                    json(generated.solution()),
+                    json(jobs.settings(request.generationJobId())));
             jdbc.update(
                     """
                     INSERT INTO attempts
@@ -258,6 +257,21 @@ public final class AttemptService {
                         json(values),
                         moveCount,
                         json(progress));
+                jdbc.update("""
+                        INSERT INTO history_entries(record_id,attempt_id,map_size,completed_millis,elapsed_millis,
+                                                    player_tag,scoring_version,value_entries,progress_json,puzzle_settings_json)
+                        SELECT r.result_id,r.attempt_id,?,DATEDIFF('MILLISECOND',
+                            TIMESTAMP WITH TIME ZONE '1970-01-01 00:00:00+00',r.completed_at),
+                            ?,?, 'direct-entry-v1',?,?,p.generation_json
+                        FROM results r JOIN attempts a ON a.attempt_id=r.attempt_id
+                        JOIN puzzles p ON p.puzzle_id=a.puzzle_id WHERE r.attempt_id=?
+                        """, puzzle.definition().columns() + "x" + puzzle.definition().rows(),
+                        progress.elapsedMillis,
+                        jdbc.queryForObject("SELECT settings_json FROM local_settings WHERE singleton_id=1",
+                                (rs, row) -> fromJson(rs.getString(1), LocalSettings.class).playerTag()),
+                        moveCount, json(progress), attemptId.toString());
+                jdbc.update("UPDATE results SET player_tag=(SELECT player_tag FROM history_entries WHERE record_id=?) WHERE attempt_id=?",
+                        attemptId.toString(), attemptId.toString());
             }
             AttemptSnapshot response = load(attemptId);
             if (command.type() != AttemptCommand.CommandType.HEARTBEAT) jdbc.update(
@@ -442,40 +456,19 @@ public final class AttemptService {
     }
 
     private String text(Object value) {
-        if (value instanceof java.sql.Clob clob) {
-            try {
-                return clob.getSubString(1, Math.toIntExact(clob.length()));
-            } catch (java.sql.SQLException exception) {
-                throw new IllegalStateException("Unable to read persisted puzzle data", exception);
-            }
-        }
-        return (String) value;
+        return StoreJson.text(value);
     }
 
     private String hash(Object value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(json(value).getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 is required by the Java runtime", exception);
-        }
+        return StoreJson.checksum(json(value));
     }
 
     private String json(Object value) {
-        try {
-            return objectMapper.writeValueAsString(value);
-        } catch (JacksonException exception) {
-            throw new IllegalStateException("Unable to serialize local attempt state", exception);
-        }
+        return store.write(value);
     }
 
     private <T> T fromJson(String value, Class<T> targetType) {
-        try {
-            return objectMapper.readValue(value, targetType);
-        } catch (JacksonException exception) {
-            throw new IllegalStateException("Persisted attempt state could not be read", exception);
-        }
+        return store.read(value, targetType);
     }
 
     private int[] intArray(String json) {

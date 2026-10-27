@@ -13,6 +13,11 @@ import java.sql.SQLException;
 @Configuration
 @Profile("!test")
 public class LocalDataConfiguration {
+    @Bean
+    org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy safeMigration(DataDirectoryLock directory) {
+        return flyway -> StoreBackups.migrate(flyway, directory.directory());
+    }
+
     @Bean(destroyMethod = "close")
     DataDirectoryLock dataDirectoryLock() throws IOException {
         return DataDirectoryLock.acquireFromEnvironment();

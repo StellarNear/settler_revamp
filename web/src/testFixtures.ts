@@ -1,3 +1,10 @@
+export const bootstrapFixture = {
+  apiVersion: "v1",
+  processInstanceId: "e715780e-1ceb-455e-a05a-de4805b76d03",
+  requestToken: "test-token",
+  maxCells: 240,
+  maxRegionSize: 9,
+};
 export const initialProgress = {
   notes: [0, 0],
   elapsedMillis: 0,

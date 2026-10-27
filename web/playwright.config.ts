@@ -9,5 +9,5 @@ export default defineConfig({
     channel: process.env.PLAYWRIGHT_CHANNEL,
     trace: "retain-on-failure",
   },
-  globalSetup: "./e2e/server.mjs",
+  globalSetup: "./e2e/server.ts",
 });

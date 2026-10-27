@@ -12,7 +12,9 @@ Open `http://localhost:8080`. Java must remain running. The Vue UI is bundled
 in the JAR; Node and an internet connection are not runtime requirements.
 The minimal engine/server slice is verified. Internet-disconnected cold-launch
 testing was explicitly waived by the user; it has not been reported as passed.
-The scaffold is still a work in progress, not the finished visual/gameplay rework.
+Gameplay, durable data and the P06 terrain/responsive visual rework are implemented.
+The overall rewrite is still in progress; P07-P10 validation, packaging, explorer
+and cutover work remain.
 
 If the browser reports `ERR_CONNECTION_REFUSED`, check that the Java terminal
 is still running and has printed `Tiwanaku ready: http://localhost:8080`.
@@ -110,9 +112,8 @@ entry without caching HTML; missing API/asset paths remain 404, never SPA HTML.
 Pinia holds validated server snapshots and transient selection/setup state only.
 Browser session storage contains editor/attempt IDs and any unresolved command's
 immutable retry payload, not authoritative boards or results.
-History management, durable settings, full EN/DE translations
-and terrain artwork remain later packets; the scaffold labels unavailable views
-honestly.
+History management and durable settings are implemented in P05 below. Full EN/DE
+translations remain later work. Terrain and viewport controls are described below.
 
 The runtime schemas in `web/src/api.ts` and the real-Java serialization/E2E
 fixtures define the frozen **v1** boundary. All response fields are required;
@@ -139,6 +140,48 @@ responses overwriting newer snapshots. Future schema changes require a new
 Flyway migration; do not rewrite the released `V1__initial_local_store.sql`.
 The explicit prototype compatibility migration remains separate and preserves
 its historical notes column.
+
+### P06 atlas and responsive board
+
+The board uses one board-coordinate SVG beneath semantic HTML cells. Each region
+gets a deterministic forest, sand, mountain or water pattern; patterns do not
+restart on each cell. Bold lines, not terrain colors, define regions. Underlined
+numbers are fixed clues, dashed focus and a solid selection frame identify the
+active cell, and a red frame with `!` marks Java-reported conflicts. Manual notes
+remain numerals in a 3-by-3 layout; candidates remain separate, explicitly labelled
+server help.
+
+All seven board sizes start at 44 px cells. Large maps scroll inside the board
+viewport instead of shrinking touch targets. Use **+ / -**, **Fit overview**,
+**Readable size** or **Zoom to selection**. Overview is an orientation aid, not a
+promise of precise touch entry at tiny scale. Keyboard navigation is an alternative:
+arrows move, Home/End reach row endpoints, Tab exits the grid, N toggles notes,
+and Escape exits note mode. Shortcuts do not capture form input. The rules/help
+dialog also documents these controls.
+
+Desktop has a 280 px tool inspector. Narrow windows put the tools below the board
+and keep the keypad sticky with safe-area spacing. Normal browser zoom, text
+scaling and touch scrolling are supported. Settings' **Reduced detail** removes
+pattern marks; **High contrast** uses plain white regions and heavier black
+boundaries. The atlas itself stays light in dark mode to preserve numeric contrast.
+Terrain has no animation or continuous rendering loop; generation remains in Java.
+
+**Artwork and fonts:** the new pattern paths are original vector artwork authored
+in `web/src/components/TerrainBoard.vue` for this rewrite, not copies of the old
+PNG atlases. Legacy image and Open Sans provenance could not be established from
+the repository audit, so none of those files is added to the Vue build. The UI uses
+installed system sans-serif fonts and Georgia/serif fallbacks, with no external font
+requests or newly redistributed font binaries. This is a deliberate deviation from
+the proposed bundled-font design until licensing is verified; legacy assets remain
+untouched.
+
+`web/e2e/terrain.spec.ts` uses fixed, schema-validated **presentation-only** snapshots
+for concave regions, a hole, adjacent matching terrain, conflicts and notes 1-9.
+It writes screenshots to ignored `web/test-results`, not random visual baselines.
+Its fixtures do not certify solvability or persistence; the separate real-Java
+browser tests cover those behaviors. Fractional DPR/CSS zoom and synthetic 200%
+text scaling are automated; actual screen-reader and physical-device verification
+remain P07 checks, not claimed results.
 
 ### P04 gameplay controls and saved time
 
@@ -185,8 +228,120 @@ diagnosing an unresolved save.
 
 Flyway V2 adds progress without rewriting V1 or deleting old records. Pre-P04
 attempts have no recorded elapsed/assistance history; their new timer starts from
-zero, not a reconstructed historical duration. Full history/import/settings and
-terrain artwork remain later packets.
+zero, not a reconstructed historical duration.
+
+### P05 history, players and durable settings
+
+History lists completed results, with player/board/scoring/assistance filters and
+date/time sorting. Apply filters explicitly. Its summary reports the filtered
+count, sum/count of **known** elapsed times, and arithmetic mean/count of stored
+legacy accuracy percentages only. Direct-entry results never contribute to that
+percentage. Missing dates, times, settings or assistance are shown as unknown.
+New completions retain their actual generation settings/seed, independently of
+subsequent menu changes; older records without that metadata remain unknown.
+
+Edit a player tag to empty/anonymous or 1-3 ASCII letters (saved uppercase).
+Imported strings outside that format remain inert text until explicitly edited.
+Deleting an entry requires confirmation and hides it from history/logical export;
+the completed attempt, result and command receipts are retained so retries cannot
+duplicate a win or resurrect a deleted history entry. Export before deleting.
+
+Settings persist locale, theme, reduced-detail preference, default board/region/
+clue-density settings, continuous-conflict preference and current player. Click
+**Save settings**; another tab's conflicting revision requires a reload.
+Defaults apply only to new puzzles. The current player is attached at completion;
+history tags are independently editable. Full terrain/detail polish remains P06.
+Browser profile/storage clearing or a port change does not erase this Java data.
+
+### Import and logical export
+
+Use **History > Backups and import** to upload/paste a source, preview valid and
+rejected records, then explicitly confirm. Legacy sources support semicolon-
+separated `map|time|accuracy`, 4-field (+date), 5-field (+player) and 7-field
+(+clicks/misses) forms. A zero/missing legacy date means unrecorded, not 1970;
+missing click counters/settings/assistance are not invented. Corrupt records are
+reported individually without discarding good ones. Duplicate occurrences in one
+source remain distinct; reimporting the **same exact source/format** is idempotent.
+Do not treat separate files containing the same non-unique legacy tuples as a
+universal identity match.
+
+The confirmed import transaction retains the full raw source and rejection report
+in H2. **Download retained raw import source** retrieves that exact text after
+previewing it again. Original desktop/browser files are never deleted or changed.
+Only the known `~/.prefs/TiwanakuScoreboard` desktop file is read, and only after
+confirmation; no arbitrary HTTP filesystem path is accepted. Actual libGDX
+Java-properties XML is supported without external entity/DTD resource access.
+
+The same-origin button reads only
+`pref:app:TiwanakuScoreboard:scoreboard_resultss` (including the final type suffix).
+Its fixture was exercised with the real compiled legacy TeaVM preference reader.
+It cannot access another scheme/host/port or device. For remote old-browser data,
+open developer tools at the **old exact origin**, then run this local-only exporter
+and upload the downloaded text into the new app:
+
+```javascript
+const raw = localStorage.getItem("pref:app:TiwanakuScoreboard:scoreboard_resultss");
+if (raw === null) throw new Error("No scoreboard exists at this origin.");
+const url = URL.createObjectURL(new Blob([raw], { type: "text/plain" }));
+const link = document.createElement("a");
+link.href = url;
+link.download = "tiwanaku-legacy-scores.txt";
+link.click();
+setTimeout(() => URL.revokeObjectURL(url), 1000);
+```
+
+Android private preferences require an in-app exporter/update bridge on that
+device. This desktop rewrite does not claim automatic Android migration.
+
+**Export history and settings** downloads a version-1 JSON envelope with a
+SHA-256 checksum over its exact payload. It preserves stable record IDs and known/
+unknown metadata. Import validates version/checksum before any writes. Settings
+replacement is a separate confirmation option; repeating a source with a changed
+settings-restore choice is rejected, not silently reapplied. Logical export is
+history/settings recovery, **not an export of playable/unfinished attempts**;
+use the full database backup for those.
+
+Limits are 4 MB per uploaded file/export, 4 million characters per API import
+source, and 10,000 records per import/history-management view. Exceeding a limit
+reports an error, never a truncated success; preserve a physical backup if the
+history-management limit is reached. Raw import sources and manually requested
+backups are retained until the user deliberately manages their files.
+
+### Schema upgrades, full backups and recovery
+
+V3 adds history/settings without rewriting V1/V2. Startup rejects newer schemas,
+checksum failures and incomplete earlier upgrades rather than resetting data.
+Before upgrading an existing schema, Java holds the data-directory lock and uses
+H2's consistent `BACKUP TO` to create a timestamped/version-labelled ZIP in
+`backups`. A failed required backup stops the upgrade. After a successful upgrade,
+automatic backups rotate to the newest five; manual/prototype-migration backups
+are not removed by that rotation. Fresh databases need no pre-upgrade backup.
+
+**Download full database backup** creates/downloads a consistent ZIP of active
+attempts, results, history, settings, receipts and raw imports. Never copy a live
+`.mv.db` file. H2 schema DDL is not assumed transactional: a failed upgrade leaves
+`upgrade-incomplete.txt`, preserves its pre-upgrade backup, and blocks automatic
+retry/repair. Keep the failed directory and logs for diagnosis.
+
+For recovery, stop Java and preserve the original directory. Extract a compatible
+backup into a **new empty directory** and launch against that directory:
+
+```powershell
+$restoreDirectory = Join-Path $env:USERPROFILE ('.tiwanaku-restored-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+Expand-Archive -LiteralPath 'C:\path\to\backup.zip' -DestinationPath $restoreDirectory
+$env:TIWANAKU_DATA_DIR = $restoreDirectory
+java -jar server\target\tiwanaku.jar
+```
+
+Validate history/settings and an active saved game there before deciding which
+directory to keep. Never overwrite the original/live database or automatically
+delete an upgrade marker. Rolling back also requires a matching older JAR and
+its pre-upgrade backup; later edits are absent from that older snapshot. A
+pre-credentials-migration backup additionally needs the explicit compatibility
+migration described above. Storage write/read-only/disk-full errors are logged
+and returned as failures; no empty replacement database is fabricated. A network/
+storage error can leave an outcome unknown, so reload/reconcile rather than
+assuming a failed response means no commit.
 
 ## Legacy application
 

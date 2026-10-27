@@ -1,9 +1,18 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { onBeforeRouteLeave } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { useGameStore } from "../stores/game";
+import { useDataStore } from "../stores/data";
+import TerrainBoard from "../components/TerrainBoard.vue";
+import { regionTerrain } from "../terrain";
 const game = useGameStore();
+const data = useDataStore();
+const terrainBoard = ref<InstanceType<typeof TerrainBoard>>();
+const selectedRegion = computed(
+  () => game.attempt?.regionIds[game.selectedCell ?? -1],
+);
+const help = ref<HTMLDialogElement>();
 const { t } = useI18n();
 const time = computed(() => {
   const seconds = Math.floor(game.elapsedMillis / 1_000);
@@ -19,13 +28,19 @@ function secondary(index: number) {
   game.selectedCell = index;
   if (game.cycleMode) void game.cycleValue(-1);
 }
-function notes(index: number) {
-  const mask = game.attempt?.progress.notes[index] ?? 0;
-  return Array.from({ length: 9 }, (_, i) => i + 1)
-    .filter((value) => mask & (1 << (value - 1)))
-    .join(" ");
-}
 async function onKeydown(event: KeyboardEvent) {
+  if (event.target instanceof HTMLElement && event.target.closest("dialog"))
+    return;
+  if (event.key === "Escape") {
+    game.noteMode = false;
+    return;
+  }
+  if (
+    event.target instanceof HTMLElement &&
+    (event.target.matches("input,select,textarea") ||
+      event.target.isContentEditable)
+  )
+    return;
   if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
   if (/^[1-9]$/.test(event.key)) {
     event.preventDefault();
@@ -36,16 +51,24 @@ async function onKeydown(event: KeyboardEvent) {
   } else if (event.key.toLowerCase() === "n") {
     event.preventDefault();
     game.noteMode = !game.noteMode;
-  } else if (event.key.startsWith("Arrow") && game.attempt) {
+  } else if (
+    (event.key.startsWith("Arrow") || ["Home", "End"].includes(event.key)) &&
+    game.attempt
+  ) {
     event.preventDefault();
     const current = game.selectedCell ?? 0;
     const columns = game.attempt.columns;
-    const delta = {
-      ArrowLeft: -1,
-      ArrowRight: 1,
-      ArrowUp: -columns,
-      ArrowDown: columns,
-    }[event.key];
+    const delta =
+      event.key === "Home"
+        ? -(current % columns)
+        : event.key === "End"
+          ? columns - 1 - (current % columns)
+          : {
+              ArrowLeft: -1,
+              ArrowRight: 1,
+              ArrowUp: -columns,
+              ArrowDown: columns,
+            }[event.key];
     if (delta === undefined) return;
     const next = current + delta;
     if (
@@ -56,8 +79,7 @@ async function onKeydown(event: KeyboardEvent) {
     )
       return;
     game.selectedCell = next;
-    await nextTick();
-    document.querySelectorAll<HTMLButtonElement>(".cell")[next]?.focus();
+    await terrainBoard.value?.focus(next);
   }
 }
 function checkpoint() {
@@ -171,163 +193,196 @@ onUnmounted(() => {
       <p v-if="game.attempt.status === 'SUSPENDED'">
         Paused. Resume explicitly; hidden and closed time is not counted.
       </p>
-      <div class="play-toolbar">
-        <label
-          ><input v-model="game.noteMode" type="checkbox" />Manual notes
-          (N)</label
-        >
-        <label
-          ><input v-model="game.cycleMode" type="checkbox" />Legacy click cycle
-          (left + / right −)</label
-        >
-        <label
-          ><input
-            type="checkbox"
-            :checked="game.attempt.progress.showConflicts"
-            :disabled="boardDisabled"
-            @change="
-              game.command(
-                'SHOW_CONFLICTS',
-                ($event.target as HTMLInputElement).checked ? 1 : 0,
-              )
-            "
-          />Continuous conflicts (assisted)</label
-        >
-      </div>
-      <div class="board" :style="{ '--columns': game.attempt.columns }">
-        <button
-          v-for="(value, index) in game.attempt.values"
-          :key="index"
-          class="cell"
-          :class="{
-            given: game.attempt.givens[index] !== 0,
-            selected: game.selectedCell === index,
-            conflict: game.attempt.progress.conflicts.includes(index),
-            'region-edge-right':
-              index % game.attempt.columns < game.attempt.columns - 1 &&
-              game.attempt.regionIds[index] !==
-                game.attempt.regionIds[index + 1],
-            'region-edge-bottom':
-              index < game.attempt.values.length - game.attempt.columns &&
-              game.attempt.regionIds[index] !==
-                game.attempt.regionIds[index + game.attempt.columns],
-          }"
-          :aria-label="`Row ${Math.floor(index / game.attempt.columns) + 1}, column ${(index % game.attempt.columns) + 1}, ${value ? `value ${value}` : 'empty'}${game.attempt.givens[index] ? ', given' : ''}${notes(index) ? `, notes ${notes(index)}` : ''}${game.attempt.progress.conflicts.includes(index) ? ', conflict' : ''}`"
-          :aria-pressed="game.selectedCell === index"
+      <div class="play-layout">
+        <TerrainBoard
+          ref="terrainBoard"
+          :attempt="game.attempt"
+          :selected="game.selectedCell"
           :disabled="
             !game.connected ||
             game.attempt.status === 'SUSPENDED' ||
             game.attempt.status === 'COMPLETED'
           "
-          @click="select(index, $event)"
-          @contextmenu.prevent="secondary(index)"
-        >
-          <span v-if="value">{{ value }}</span
-          ><span v-else class="manual-notes">{{ notes(index) }}</span>
-        </button>
+          :reduced-detail="data.settings?.reducedDetail ?? false"
+          @select="select"
+          @secondary="secondary"
+          @focus-cell="game.selectedCell = $event"
+        />
+        <aside class="play-inspector" aria-label="Puzzle tools and selection">
+          <h2>Field notes</h2>
+          <p v-if="selectedRegion !== undefined" class="selected-region">
+            Region {{ selectedRegion + 1 }} ·
+            {{ regionTerrain(selectedRegion)?.name }} ·
+            {{ game.maxEntry }} cells <br />Row
+            {{
+              Math.floor((game.selectedCell ?? 0) / game.attempt.columns) + 1
+            }}, column
+            {{ ((game.selectedCell ?? 0) % game.attempt.columns) + 1 }} ·
+            {{
+              game.attempt.givens[game.selectedCell ?? -1]
+                ? "Fixed clue"
+                : "Editable"
+            }}
+          </p>
+          <p v-else class="selected-region">
+            Select a cell to inspect its region and enter values.
+          </p>
+          <button @click="help?.showModal()">Rules and keyboard help</button>
+          <div class="play-toolbar">
+            <label
+              ><input v-model="game.noteMode" type="checkbox" />Manual notes
+              (N)</label
+            >
+            <label
+              ><input v-model="game.cycleMode" type="checkbox" />Legacy click
+              cycle (left + / right −)</label
+            >
+            <label
+              ><input
+                type="checkbox"
+                :checked="game.attempt.progress.showConflicts"
+                :disabled="boardDisabled"
+                @change="
+                  game.command(
+                    'SHOW_CONFLICTS',
+                    ($event.target as HTMLInputElement).checked ? 1 : 0,
+                  )
+                "
+              />Continuous conflicts (assisted)</label
+            >
+          </div>
+          <div class="number-pad" aria-label="Number entry">
+            <button
+              v-for="number in game.maxEntry"
+              :key="number"
+              :aria-label="`${game.noteMode ? 'Toggle note' : 'Enter'} ${number}`"
+              :disabled="
+                boardDisabled ||
+                game.selectedCell === undefined ||
+                game.attempt.givens[game.selectedCell] !== 0
+              "
+              @click="game.enterValue(number)"
+            >
+              {{ number }}
+            </button>
+            <button
+              class="clear-button"
+              aria-label="Clear selected cell"
+              :disabled="
+                boardDisabled ||
+                !game.selectedValue ||
+                game.attempt.givens[game.selectedCell ?? -1] !== 0
+              "
+              @click="game.command('SET_VALUE', 0)"
+            >
+              CLEAR
+            </button>
+          </div>
+          <div class="play-toolbar">
+            <button
+              :disabled="boardDisabled || !game.attempt.progress.canUndo"
+              @click="game.command('UNDO')"
+            >
+              Undo
+            </button>
+            <button
+              :disabled="boardDisabled || !game.attempt.progress.canRedo"
+              @click="game.command('REDO')"
+            >
+              Redo
+            </button>
+            <button :disabled="boardDisabled" @click="checkpoint">
+              Save checkpoint
+            </button>
+            <button
+              :disabled="boardDisabled || !game.attempt.progress.hasCheckpoint"
+              @click="restore"
+            >
+              Restore checkpoint
+            </button>
+            <button :disabled="boardDisabled" @click="game.command('CHECK')">
+              Check conflicts
+            </button>
+            <button
+              :disabled="
+                boardDisabled ||
+                game.selectedCell === undefined ||
+                game.attempt.givens[game.selectedCell] !== 0
+              "
+              @click="game.command('CANDIDATES')"
+            >
+              Show candidates
+            </button>
+            <button :disabled="boardDisabled" @click="game.command('EXPLAIN')">
+              Explain a single
+            </button>
+            <button
+              :disabled="
+                boardDisabled ||
+                game.selectedCell === undefined ||
+                game.attempt.givens[game.selectedCell] !== 0
+              "
+              @click="reveal"
+            >
+              Reveal selected value
+            </button>
+          </div>
+          <p v-if="game.attempt.progress.helpMessage" class="help-message">
+            {{ game.attempt.progress.helpMessage }}
+          </p>
+          <p v-if="game.attempt.progress.candidates.length">
+            Server candidates:
+            {{ game.attempt.progress.candidates.join(", ") }}. These are not
+            manual notes.
+          </p>
+          <p class="assistance">
+            Assistance: {{ game.attempt.progress.candidateRequests }} candidate
+            requests,
+            {{ game.attempt.progress.explanationRequests }} explanations,
+            {{ game.attempt.progress.reveals }} reveals
+            {{
+              game.attempt.progress.continuousConflictsUsed
+                ? " · continuous conflicts used"
+                : ""
+            }}.
+          </p>
+          <p v-if="game.attempt.status === 'COMPLETED'" class="completion">
+            Result saved · {{ time }} active ·
+            {{ game.attempt.progress.valueEntryCount }} entries ·
+            {{ game.attempt.progress.wrongEntryCount }} noncanonical entries.
+          </p>
+          <p>
+            Digits enter values; Delete clears; arrows move selection. Select a
+            given to inspect it; it cannot be edited.
+          </p>
+        </aside>
       </div>
-      <div class="number-pad" aria-label="Number entry">
-        <button
-          v-for="number in game.maxEntry"
-          :key="number"
-          :aria-label="`${game.noteMode ? 'Toggle note' : 'Enter'} ${number}`"
-          :disabled="
-            boardDisabled ||
-            game.selectedCell === undefined ||
-            game.attempt.givens[game.selectedCell] !== 0
-          "
-          @click="game.enterValue(number)"
-        >
-          {{ number }}
-        </button>
-        <button
-          class="clear-button"
-          aria-label="Clear selected cell"
-          :disabled="
-            boardDisabled ||
-            !game.selectedValue ||
-            game.attempt.givens[game.selectedCell ?? -1] !== 0
-          "
-          @click="game.command('SET_VALUE', 0)"
-        >
-          CLEAR
-        </button>
-      </div>
-      <div class="play-toolbar">
-        <button
-          :disabled="boardDisabled || !game.attempt.progress.canUndo"
-          @click="game.command('UNDO')"
-        >
-          Undo
-        </button>
-        <button
-          :disabled="boardDisabled || !game.attempt.progress.canRedo"
-          @click="game.command('REDO')"
-        >
-          Redo
-        </button>
-        <button :disabled="boardDisabled" @click="checkpoint">
-          Save checkpoint
-        </button>
-        <button
-          :disabled="boardDisabled || !game.attempt.progress.hasCheckpoint"
-          @click="restore"
-        >
-          Restore checkpoint
-        </button>
-        <button :disabled="boardDisabled" @click="game.command('CHECK')">
-          Check conflicts
-        </button>
-        <button
-          :disabled="
-            boardDisabled ||
-            game.selectedCell === undefined ||
-            game.attempt.givens[game.selectedCell] !== 0
-          "
-          @click="game.command('CANDIDATES')"
-        >
-          Show candidates
-        </button>
-        <button :disabled="boardDisabled" @click="game.command('EXPLAIN')">
-          Explain a single
-        </button>
-        <button
-          :disabled="
-            boardDisabled ||
-            game.selectedCell === undefined ||
-            game.attempt.givens[game.selectedCell] !== 0
-          "
-          @click="reveal"
-        >
-          Reveal selected value
-        </button>
-      </div>
-      <p v-if="game.attempt.progress.helpMessage" class="help-message">
-        {{ game.attempt.progress.helpMessage }}
-      </p>
-      <p v-if="game.attempt.progress.candidates.length">
-        Server candidates: {{ game.attempt.progress.candidates.join(", ") }}.
-        These are not manual notes.
-      </p>
-      <p class="assistance">
-        Assistance: {{ game.attempt.progress.candidateRequests }} candidate
-        requests, {{ game.attempt.progress.explanationRequests }} explanations,
-        {{ game.attempt.progress.reveals }} reveals
-        {{
-          game.attempt.progress.continuousConflictsUsed
-            ? " · continuous conflicts used"
-            : ""
-        }}.
-      </p>
-      <p v-if="game.attempt.status === 'COMPLETED'" class="completion">
-        Result saved · {{ time }} active ·
-        {{ game.attempt.progress.valueEntryCount }} entries ·
-        {{ game.attempt.progress.wrongEntryCount }} noncanonical entries.
-      </p>
-      <p>
-        Digits enter values; Delete clears; arrows move selection. Select a
-        given to inspect it; it cannot be edited.
-      </p>
+      <dialog ref="help" class="rules-dialog" aria-labelledby="rules-title">
+        <h2 id="rules-title">Reading the atlas</h2>
+        <p>
+          Every bold-bordered region contains each number from 1 to its number
+          of cells exactly once. Equal numbers cannot touch, including
+          diagonally.
+        </p>
+        <p>
+          Terrain is decorative. Two forest regions remain separate when a bold
+          line divides them. Underlined numbers are fixed clues. A cell marked !
+          has a server-reported duplicate conflict, not necessarily every wrong
+          answer.
+        </p>
+        <p>
+          Click/tap selects; digits enter; Delete, Backspace or 0 clears; arrows
+          move; Home/End reach the first/last cell in a row. Tab exits the grid.
+          N toggles manual notes; Escape exits note mode. Notes are not computed
+          candidates.
+        </p>
+        <p>
+          Large maps start with readable scrollable cells. Fit overview is for
+          orientation; use Zoom to selection for precise entry. Browser zoom and
+          touch scrolling remain available.
+        </p>
+        <form method="dialog"><button>Close help</button></form>
+      </dialog>
     </template>
     <div v-else class="empty-board">
       <p>{{ t("noGame") }}</p>

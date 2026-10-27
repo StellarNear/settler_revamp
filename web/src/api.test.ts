@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initialProgress } from "./testFixtures";
+import { initialProgress, bootstrapFixture } from "./testFixtures";
 import {
   attemptSchema,
   bootstrapSchema,
@@ -28,13 +28,6 @@ export const fixture = {
   editorLeaseExpiresAt: "2026-10-27T15:00:00Z",
   moveCount: 0,
   progress: initialProgress,
-};
-export const bootstrapFixture = {
-  apiVersion: "v1",
-  processInstanceId: "e715780e-1ceb-455e-a05a-de4805b76d03",
-  requestToken: "test-token",
-  maxCells: 240,
-  maxRegionSize: 9,
 };
 
 describe("v1 HTTP contracts", () => {
