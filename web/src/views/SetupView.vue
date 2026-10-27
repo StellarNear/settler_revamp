@@ -46,9 +46,13 @@ async function generate() {
     >
       {{ game.pending ? "WORKING..." : "GENERATE PUZZLE" }}
     </button>
-    <button v-if="game.job" class="text-button" @click="game.cancelGeneration">
-      :disabled="game.cancelling || !game.connected" class="text-button"
-      @click="game.cancelGeneration"> Cancel generation
+    <button
+      v-if="game.job"
+      class="text-button"
+      :disabled="game.cancelling || !game.connected"
+      @click="game.cancelGeneration"
+    >
+      {{ game.cancelling ? "Cancelling..." : "Cancel generation" }}
     </button>
     <RouterLink v-if="game.attempt" to="/play">Return to saved game</RouterLink>
   </section>

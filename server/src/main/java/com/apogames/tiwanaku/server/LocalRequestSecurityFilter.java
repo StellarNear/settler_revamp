@@ -30,6 +30,12 @@ public final class LocalRequestSecurityFilter extends OncePerRequestFilter {
             HttpServletRequest request,
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
+        response.setHeader("Content-Security-Policy",
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                        + "img-src 'self' data:; font-src 'self'; connect-src 'self'; "
+                        + "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setHeader("Referrer-Policy", "no-referrer");
         if (request.getRequestURI().startsWith("/api/")
                 || Set.of("/", "/index.html", "/setup", "/play", "/history", "/settings")
                         .contains(request.getRequestURI())) {

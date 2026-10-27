@@ -6,6 +6,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LocalRequestSecurityFilterTest {
     @Test
@@ -54,6 +55,54 @@ class LocalRequestSecurityFilterTest {
                 missingTokenResponse,
                 new MockFilterChain());
         assertEquals(403, missingTokenResponse.getStatus());
+    }
+
+    @Test
+    void retainsLocalBoundariesForMalformedAuthoritiesPortsTokensAndRemoteClients() throws Exception {
+        LocalRequestToken token = new LocalRequestToken();
+        LocalRequestSecurityFilter filter = new LocalRequestSecurityFilter(token);
+        for (String host : new String[]{"localhost:8081", "localhost:8080@evil.example",
+                "localhost:8080/path", "localhost.evil.example:8080"}) {
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            filter.doFilter(request("GET", host, null), response, new MockFilterChain());
+            assertEquals(403, response.getStatus(), host);
+        }
+        for (String origin : new String[]{"null", "http://localhost:8081",
+                "https://localhost:8080", "http://localhost:8080?foreign=1",
+                "http://localhost:8080@evil.example"}) {
+            MockHttpServletRequest request = request("POST", "localhost:8080", origin);
+            request.addHeader("X-Tiwanaku-Token", token.value());
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            filter.doFilter(request, response, new MockFilterChain());
+            assertEquals(403, response.getStatus(), origin);
+        }
+        MockHttpServletRequest remote = request("GET", "localhost:8080", null);
+        remote.setRemoteAddr("192.0.2.1");
+        MockHttpServletResponse remoteResponse = new MockHttpServletResponse();
+        filter.doFilter(remote, remoteResponse, new MockFilterChain());
+        assertEquals(403, remoteResponse.getStatus());
+
+        MockHttpServletRequest staleToken = request("POST", "localhost:8080", "http://localhost:8080");
+        staleToken.addHeader("X-Tiwanaku-Token", new LocalRequestToken().value());
+        MockHttpServletResponse staleResponse = new MockHttpServletResponse();
+        filter.doFilter(staleToken, staleResponse, new MockFilterChain());
+        assertEquals(403, staleResponse.getStatus());
+    }
+
+    @Test
+    void sendsLocalOnlyContentPolicyOnPagesAndRejectedRequests() throws Exception {
+        LocalRequestSecurityFilter filter = new LocalRequestSecurityFilter(new LocalRequestToken());
+        for (String host : new String[]{"localhost:8080", "foreign.example:8080"}) {
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            filter.doFilter(request("GET", host, null), response, new MockFilterChain());
+            String policy = response.getHeader("Content-Security-Policy");
+            assertTrue(policy.contains("script-src 'self'"));
+            assertTrue(policy.contains("connect-src 'self'"));
+            assertTrue(policy.contains("object-src 'none'"));
+            assertTrue(policy.contains("frame-ancestors 'none'"));
+            assertEquals("nosniff", response.getHeader("X-Content-Type-Options"));
+            assertEquals("no-referrer", response.getHeader("Referrer-Policy"));
+        }
     }
 
     private static MockHttpServletRequest request(String method, String host, String origin) {

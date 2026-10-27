@@ -47,7 +47,10 @@ onUnmounted(() => {
   <div class="shell" :class="{ 'play-shell': route.path === '/play' }">
     <a class="skip-link" href="#content">{{ t("skip") }}</a>
     <header class="topbar">
-      <RouterLink class="wordmark" to="/setup" aria-label="Tiwanaku home"
+      <RouterLink
+        class="wordmark"
+        to="/setup"
+        aria-label="Tiwanaku / Local home"
         >TIWANAKU<span> / LOCAL</span></RouterLink
       >
       <div class="connection" :class="{ offline: !game.connected }">

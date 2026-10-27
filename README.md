@@ -12,8 +12,9 @@ Open `http://localhost:8080`. Java must remain running. The Vue UI is bundled
 in the JAR; Node and an internet connection are not runtime requirements.
 The minimal engine/server slice is verified. Internet-disconnected cold-launch
 testing was explicitly waived by the user; it has not been reported as passed.
-Gameplay, durable data and the P06 terrain/responsive visual rework are implemented.
-The overall rewrite is still in progress; P07-P10 validation, packaging, explorer
+Gameplay, durable data, the terrain/responsive visual rework and lightweight
+P07 reliability/accessibility checks are implemented.
+The overall rewrite is still in progress; P08-P10 packaging, explorer
 and cutover work remain.
 
 If the browser reports `ERR_CONNECTION_REFUSED`, check that the Java terminal
@@ -181,7 +182,60 @@ It writes screenshots to ignored `web/test-results`, not random visual baselines
 Its fixtures do not certify solvability or persistence; the separate real-Java
 browser tests cover those behaviors. Fractional DPR/CSS zoom and synthetic 200%
 text scaling are automated; actual screen-reader and physical-device verification
-remain P07 checks, not claimed results.
+are deferred under the lightweight P07 amendment, not claimed results.
+
+### P07 lightweight local reliability checks
+
+This packet deliberately stays small for a localhost game: no authentication
+service, TLS/certificate setup, telemetry or hosted-security redesign.
+The existing loopback binding, Host/Origin checks and per-process mutation token
+remain. Responses also set a local-only Content Security Policy, `nosniff` and
+`no-referrer`. Inline styles remain allowed for Vue's reactive board geometry;
+inline scripts, external connections, embedded objects and framing are disallowed.
+This is not a sandbox for running untrusted software on your computer.
+
+The browser suite stops/restarts an actual isolated Java process while its tab
+remains open, verifies edits freeze, restores the same saved attempt, rejects the
+old process token, and resumes only after any uncertain heartbeat is resolved.
+An unresolved operation is never discarded or retried with a new ID simply because
+Java restarted. Cancellation UI tests retain the previous game; Java cancellation
+is also covered by the server integration test.
+
+Run the existing `npm.cmd run test:e2e` command after building/packaging to include
+the focused P07 tests. They use dev-only `@axe-core/playwright`/`axe-core` 4.14.0
+and report serious/critical automated WCAG findings on tested routes/states,
+alongside the P06 keyboard/contrast tests. They check all three themes on setup,
+settings and history, plus active/paused play and the native help dialog, and
+reject external runtime requests or CSP violations in that journey. Detailed axe
+results and a local navigation timing sample are test attachments, not accessibility
+certification or a performance benchmark.
+
+As explicitly approved for the lighter scope, screen-reader listening,
+disconnected-internet cold launch, physical-device/cross-browser matrices,
+exhaustive auditing and new hosted CI infrastructure are **deferred, not passed**.
+No browser-independent/offline game mode or service worker is introduced.
+
+#### Direct dependency / artwork provenance snapshot
+
+Locally installed manifests/POMs were inspected; this is a bounded inventory,
+not a redistribution/legal review of every transitive package.
+
+| Component | Version | Declared license |
+| --- | --- | --- |
+| Vue | 3.5.44 | MIT |
+| Pinia | 3.0.3 | MIT |
+| Vue Router | 4.6.3 | MIT |
+| Vue I18n | 11.1.12 | MIT |
+| Zod | 4.6.7 | MIT |
+| Spring Boot | 4.1.2 | Apache-2.0 |
+| Flyway Core (parent declaration) | 12.4.0 | Apache-2.0 |
+| H2 | 2.3.232 | MPL-2.0 / EPL-1.0 |
+| axe Playwright integration and axe-core (test-only) | 4.14.0 | MPL-2.0 |
+
+Original vector terrain and system-font choices are documented in P06 above.
+Do not treat legacy image/font or archived-source provenance as resolved by this
+table. Keep dependency license/notice files intact. Full release notice collection
+belongs to packaging/release work.
 
 ### P04 gameplay controls and saved time
 

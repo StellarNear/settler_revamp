@@ -230,7 +230,13 @@ test("real legacy TeaVM preference reader recognizes the exact same-origin key w
       return {prefix:Bg(prefs.a48),strings};
     };${marker}`,
   );
-  await page.addScriptTag({ content: fixture });
+  await page.route("**/__test__/legacy-reader.js", (route) =>
+    route.fulfill({
+      contentType: "application/javascript",
+      body: fixture,
+    }),
+  );
+  await page.addScriptTag({ url: "/__test__/legacy-reader.js" });
   const decoded = z
     .object({ prefix: z.string(), strings: z.array(z.string()) })
     .parse(await page.evaluate("legacyPreferenceFixture()"));

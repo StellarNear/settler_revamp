@@ -229,7 +229,7 @@ footer {
   font-family: Consolas, monospace;
 }
 .wordmark span {
-  color: #8c9383;
+  color: var(--muted-color);
   font-size: 10px;
 }
 .connection {
@@ -305,7 +305,7 @@ label {
 label span {
   display: block;
   margin-bottom: 7px;
-  color: #818174;
+  color: var(--muted-color);
   font-size: 9px;
   letter-spacing: 0.12em;
 }
