@@ -259,17 +259,20 @@ public final class AttemptService {
                         json(progress));
                 jdbc.update("""
                         INSERT INTO history_entries(record_id,attempt_id,map_size,completed_millis,elapsed_millis,
-                                                    player_tag,scoring_version,value_entries,progress_json,puzzle_settings_json)
+                                                    player_tag,scoring_version,value_entries,legacy_accuracy,total_clicks,
+                                                    total_miss_clicks,progress_json,puzzle_settings_json)
                         SELECT r.result_id,r.attempt_id,?,DATEDIFF('MILLISECOND',
                             TIMESTAMP WITH TIME ZONE '1970-01-01 00:00:00+00',r.completed_at),
-                            ?,?, 'direct-entry-v1',?,?,p.generation_json
+                            ?,?,?,?,?,?,?,?,p.generation_json
                         FROM results r JOIN attempts a ON a.attempt_id=r.attempt_id
                         JOIN puzzles p ON p.puzzle_id=a.puzzle_id WHERE r.attempt_id=?
                         """, puzzle.definition().columns() + "x" + puzzle.definition().rows(),
                         progress.elapsedMillis,
                         jdbc.queryForObject("SELECT settings_json FROM local_settings WHERE singleton_id=1",
                                 (rs, row) -> fromJson(rs.getString(1), LocalSettings.class).playerTag()),
-                        moveCount, json(progress), attemptId.toString());
+                        progress.legacyAccuracy() == null ? "direct-entry-v1" : "legacy-clicks-v1",
+                        moveCount, progress.legacyAccuracy(), progress.totalClicks, progress.totalMissClicks,
+                        json(progress), attemptId.toString());
                 jdbc.update("UPDATE results SET player_tag=(SELECT player_tag FROM history_entries WHERE record_id=?) WHERE attempt_id=?",
                         attemptId.toString(), attemptId.toString());
             }
@@ -406,18 +409,26 @@ public final class AttemptService {
 
     private GameProgress progress(Map<String, Object> row, int cells) {
         Object saved = row.get("PROGRESS_JSON");
-        if (saved != null) return fromJson(text(saved), GameProgress.class);
-        GameProgress initial = GameProgress.initial(cells, false);
-        initial.valueEntryCount = ((Number) row.get("MOVE_COUNT")).intValue();
-        initial.started = !"READY".equals(row.get("STATUS"));
-        return initial;
+        GameProgress current;
+        if (saved != null) {
+            current = fromJson(text(saved), GameProgress.class);
+        } else {
+            current = GameProgress.initial(cells, false);
+            current.valueEntryCount = ((Number) row.get("MOVE_COUNT")).intValue();
+            current.started = !"READY".equals(row.get("STATUS"));
+        }
+        current.ensureClickStats(cells);
+        return current;
     }
 
     private AttemptSnapshot.ProgressSnapshot snapshot(GameProgress progress, boolean completed) {
+        progress.ensureClickStats(progress.notes.length);
         return new AttemptSnapshot.ProgressSnapshot(
                 progress.notes, progress.elapsedMillis, progress.started, progress.replay,
                 progress.valueEntryCount, completed ? progress.wrongEntryCount : null, progress.candidateRequests,
-                progress.explanationRequests, progress.reveals, progress.continuousConflictsUsed, progress.showConflicts,
+                progress.explanationRequests, progress.totalClicks, progress.totalMissClicks,
+                progress.legacyAccuracy(), progress.directValueEntryUsed, progress.reveals,
+                progress.continuousConflictsUsed, progress.showConflicts,
                 !progress.undo.isEmpty(), !progress.redo.isEmpty(), progress.checkpoint != null,
                 progress.conflicts, progress.candidates, progress.helpMessage, progress.timingSequence);
     }

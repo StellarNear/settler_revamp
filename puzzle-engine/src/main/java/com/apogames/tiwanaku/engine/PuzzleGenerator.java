@@ -49,6 +49,12 @@ public final class PuzzleGenerator {
             }
 
             int[] solution = initial.solutions().getFirst();
+            diversifyRegions(regionIds, solution, spec, random.split());
+            regionLayout = new PuzzleDefinition(
+                    spec.columns(), spec.rows(), regionIds, new int[spec.columns() * spec.rows()]);
+            if (!BoardRules.isValidCompleteBoard(regionLayout, solution)) {
+                continue;
+            }
             ClueRemovalResult removal = removeClues(
                     regionLayout, solution, spec, startedAt, timeoutNanos, random.split(), visitedNodes);
             visitedNodes = removal.visitedNodes();
@@ -153,8 +159,7 @@ public final class PuzzleGenerator {
             long timeoutNanos,
             SplittableRandom random) {
         int cellCount = spec.columns() * spec.rows();
-        if (spec.columns() > 1 && spec.rows() > 1 && cellCount >= 8 && spec.maxRegionSize() < 8
-                && (spec.columns() % 2 != 0 || spec.rows() % 2 != 0)) {
+        if (spec.columns() > 1 && spec.rows() > 1 && cellCount >= 8 && spec.maxRegionSize() < 8) {
             return createSnakePartition(spec, random);
         }
         int[] regionIds = new int[cellCount];
@@ -236,6 +241,93 @@ public final class PuzzleGenerator {
         }
         mergeAdjacentRegions(regionIds, regionSizes, spec, random);
         return normalizeRegionIds(regionIds, regionSizes);
+    }
+
+    private void diversifyRegions(
+            int[] regionIds,
+            int[] solution,
+            GenerationSpec spec,
+            SplittableRandom random) {
+        int[] regionSizes = new int[regionIds.length];
+        for (int regionId : regionIds) {
+            regionSizes[regionId]++;
+        }
+
+        for (int attempt = 0; attempt < regionIds.length * 100; attempt++) {
+            int cell = random.nextInt(regionIds.length);
+            List<Integer> adjacentCells = neighbors(cell, spec.columns(), spec.rows());
+            if (adjacentCells.isEmpty()) {
+                continue;
+            }
+            int adjacentCell = adjacentCells.get(random.nextInt(adjacentCells.size()));
+            int sourceRegion = regionIds[cell];
+            int targetRegion = regionIds[adjacentCell];
+            int sourceSize = regionSizes[sourceRegion];
+            int targetSize = regionSizes[targetRegion];
+            if (sourceRegion == targetRegion
+                    || sourceSize <= 1
+                    || targetSize >= spec.maxRegionSize()
+                    || solution[cell] != sourceSize
+                    || !canPlaceValue(cell, targetSize + 1, solution, spec)
+                    || !regionRemainsConnectedAfterRemoval(
+                            regionIds, sourceRegion, cell, sourceSize - 1, spec)) {
+                continue;
+            }
+
+            regionIds[cell] = targetRegion;
+            solution[cell] = targetSize + 1;
+            regionSizes[sourceRegion]--;
+            regionSizes[targetRegion]++;
+        }
+    }
+
+    private boolean canPlaceValue(int cell, int value, int[] solution, GenerationSpec spec) {
+        int x = cell % spec.columns();
+        int y = cell / spec.columns();
+        for (int neighborY = Math.max(0, y - 1); neighborY <= Math.min(spec.rows() - 1, y + 1); neighborY++) {
+            for (int neighborX = Math.max(0, x - 1); neighborX <= Math.min(spec.columns() - 1, x + 1); neighborX++) {
+                int neighbor = neighborY * spec.columns() + neighborX;
+                if (neighbor != cell && solution[neighbor] == value) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private boolean regionRemainsConnectedAfterRemoval(
+            int[] regionIds,
+            int regionId,
+            int removedCell,
+            int expectedSize,
+            GenerationSpec spec) {
+        int start = -1;
+        for (int neighbor : neighbors(removedCell, spec.columns(), spec.rows())) {
+            if (regionIds[neighbor] == regionId) {
+                start = neighbor;
+                break;
+            }
+        }
+        if (start < 0) {
+            return false;
+        }
+
+        boolean[] visited = new boolean[regionIds.length];
+        int[] pending = new int[expectedSize];
+        int head = 0;
+        int tail = 0;
+        pending[tail++] = start;
+        visited[start] = true;
+        while (head < tail) {
+            int current = pending[head++];
+            for (int neighbor : neighbors(current, spec.columns(), spec.rows())) {
+                if (neighbor != removedCell && !visited[neighbor] && regionIds[neighbor] == regionId) {
+                    visited[neighbor] = true;
+                    pending[tail++] = neighbor;
+                }
+            }
+        }
+        return tail == expectedSize;
     }
 
     private int[] createSnakePartition(GenerationSpec spec, SplittableRandom random) {

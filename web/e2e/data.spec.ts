@@ -117,13 +117,17 @@ test("legacy preview/import/filter/edit/export/delete retains raw data and repor
   await page
     .getByRole("button", { name: "Apply filters", exact: true })
     .click();
+  await expect(page.locator(".history-summary")).toContainText("2 results");
   await expect(page.locator(".history-summary")).toContainText(
-    "2 results · 3000 known elapsed ms",
+    "Total time: 3 s across 2 timed records",
   );
   await expect(page.locator(".history-summary")).toContainText("70.00%");
   await expect(
     page.locator(".history-table .saved-player").filter({ hasText: "<old>" }),
   ).toBeVisible();
+  await expect(
+    page.locator(".history-table tbody tr").first().locator("td").nth(2),
+  ).toHaveText("Legacy clicks");
   const originalDownload = page.waitForEvent("download");
   await page
     .getByRole("button", {

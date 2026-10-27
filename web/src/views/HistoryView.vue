@@ -14,6 +14,7 @@ import {
 } from "../dataApi";
 import { loadBootstrap, HttpError } from "../api";
 import { useDataStore } from "../stores/data";
+import { formatElapsed } from "../historyPresentation";
 const { t } = useI18n();
 const settings = useDataStore();
 const history = ref<z.infer<typeof historySchema>>();
@@ -30,6 +31,29 @@ const source = ref(""),
   restoreSettings = ref(false);
 const preview = ref<z.infer<typeof previewSchema>>();
 const tags = ref<Record<string, string>>({});
+function scoringLabel(version: HistoryEntry["scoringVersion"]) {
+  switch (version) {
+    case "legacy-clicks-v1":
+      return "Legacy clicks";
+    case "direct-entry-v1":
+      return "Direct entry";
+    case "unrecorded-v0":
+      return "Unrecorded";
+  }
+}
+function assistanceLabel(entry: HistoryEntry) {
+  const assistance = entry.assistance;
+  if (!assistance) return "Unknown";
+  const used: string[] = [];
+  if (assistance.candidates)
+    used.push(`${assistance.candidates} candidate checks`);
+  if (assistance.explanations)
+    used.push(`${assistance.explanations} explanations`);
+  if (assistance.reveals) used.push(`${assistance.reveals} reveals`);
+  if (assistance.continuousConflicts) used.push("conflicts");
+  if (assistance.replay) used.push("replay");
+  return used.length ? used.join(" · ") : "No hints or reveals";
+}
 watch([source, format], () => {
   preview.value = undefined;
 });
@@ -269,18 +293,27 @@ onMounted(() => void refresh());
       >
       <button :disabled="busy">Apply filters</button>
     </form>
-    <p v-if="history" class="history-summary">
-      {{ history.summary.count }} results ·
-      {{ history.summary.elapsedSum }} known elapsed ms across
-      {{ history.summary.knownElapsedCount }} records · legacy accuracy mean
-      {{
-        history.summary.legacyAccuracyMean === null
-          ? "unknown"
-          : `${history.summary.legacyAccuracyMean.toFixed(2)}%`
-      }}
-      across {{ history.summary.legacyAccuracyCount }} compatible legacy
-      records. New entry counts are never averaged with legacy percentages.
-    </p>
+    <div v-if="history" class="history-summary" aria-label="History summary">
+      <strong>{{ history.summary.count }} results</strong>
+      <span
+        >Total time: {{ formatElapsed(history.summary.elapsedSum) }} across
+        {{ history.summary.knownElapsedCount }} timed records</span
+      >
+      <span
+        >Mean legacy accuracy:
+        {{
+          history.summary.legacyAccuracyMean === null
+            ? "Unknown"
+            : `${history.summary.legacyAccuracyMean.toFixed(2)}%`
+        }}
+        across {{ history.summary.legacyAccuracyCount }} compatible
+        records</span
+      >
+      <small
+        >Legacy accuracy excludes newer entry-count scoring; the two are not
+        averaged together.</small
+      >
+    </div>
     <p v-if="history && !history.entries.length">
       No history matches these filters.
     </p>
@@ -291,10 +324,11 @@ onMounted(() => void refresh());
         </caption>
         <thead>
           <tr>
-            <th>Board/date</th>
-            <th>Time / scoring</th>
+            <th>Board &amp; date</th>
+            <th>Time &amp; score</th>
+            <th>Method</th>
             <th>Assistance</th>
-            <th>Player/actions</th>
+            <th>Player &amp; actions</th>
           </tr>
         </thead>
         <tbody>
@@ -303,58 +337,50 @@ onMounted(() => void refresh());
             :key="entry.recordId"
             :data-record-id="entry.recordId"
           >
-            <td>
-              {{ entry.mapSize }}<br />{{
+            <td class="history-board">
+              <strong>{{ entry.mapSize }}</strong>
+              <span>{{
                 entry.completedMillis === null
                   ? "Date unknown"
                   : new Date(entry.completedMillis).toLocaleString()
-              }}
-              <p v-if="entry.puzzleSettings">
-                {{ entry.puzzleSettings.difficulty }} · maximum region
-                {{ entry.puzzleSettings.maxRegionSize }} · seed
-                {{ entry.puzzleSettings.seed }}
-              </p>
-              <p v-else>Puzzle settings unknown</p>
+              }}</span>
+              <small v-if="entry.puzzleSettings">
+                {{ entry.puzzleSettings.difficulty }} · max region
+                {{ entry.puzzleSettings.maxRegionSize }}
+              </small>
+              <small v-else>Puzzle settings unknown</small>
             </td>
-            <td>
-              {{
-                entry.elapsedMillis === null
-                  ? "Time unknown"
-                  : `${entry.elapsedMillis} ms`
-              }}<br />{{ entry.scoringVersion }}<br />{{
+            <td class="history-result">
+              <strong>{{ formatElapsed(entry.elapsedMillis) }}</strong>
+              <span>{{
                 entry.legacyAccuracy === null
                   ? `${entry.valueEntries ?? "Unknown"} entries`
                   : `${entry.legacyAccuracy}% legacy accuracy`
-              }}<span v-if="entry.totalClicks !== null">
-                · {{ entry.totalClicks }} clicks /
-                {{ entry.totalMissClicks }} misses</span
-              >
+              }}</span>
+              <small v-if="entry.totalClicks !== null">
+                {{ entry.totalClicks }} clicks ·
+                {{ entry.totalMissClicks }} misses
+              </small>
             </td>
-            <td v-if="entry.assistance">
-              {{ entry.assistance.candidates }} candidates,
-              {{ entry.assistance.explanations }} explanations,
-              {{ entry.assistance.reveals }} reveals{{
-                entry.assistance.continuousConflicts
-                  ? " · continuous conflicts"
-                  : ""
-              }}{{ entry.assistance.replay ? " · replay" : "" }}
-            </td>
-            <td v-else>Unknown</td>
-            <td>
+            <td>{{ scoringLabel(entry.scoringVersion) }}</td>
+            <td>{{ assistanceLabel(entry) }}</td>
+            <td class="history-player">
               <span class="saved-player">{{
                 entry.playerTag || "Anonymous"
               }}</span>
-              <form @submit.prevent="rename(entry)">
-                <label
-                  >New player tag<input
-                    v-model="tags[entry.recordId]"
-                    maxlength="128"
-                    pattern="[A-Za-z]{0,3}" /></label
-                ><button :disabled="busy">Save player tag</button>
-              </form>
-              <button :disabled="busy" @click="remove(entry)">
-                Delete history entry
-              </button>
+              <div class="history-actions">
+                <form @submit.prevent="rename(entry)">
+                  <label
+                    >New player tag<input
+                      v-model="tags[entry.recordId]"
+                      maxlength="128"
+                      pattern="[A-Za-z]{0,3}" /></label
+                  ><button :disabled="busy">Save player tag</button>
+                </form>
+                <button :disabled="busy" @click="remove(entry)">
+                  Delete history entry
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>

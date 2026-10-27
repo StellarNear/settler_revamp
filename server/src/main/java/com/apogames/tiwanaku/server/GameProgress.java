@@ -13,6 +13,11 @@ public final class GameProgress {
     public boolean replay;
     public int valueEntryCount;
     public int wrongEntryCount;
+    public long[] clickCounts;
+    public long[] clickMissCounts;
+    public long totalClicks;
+    public long totalMissClicks;
+    public boolean directValueEntryUsed;
     public int candidateRequests;
     public int explanationRequests;
     public int reveals;
@@ -35,8 +40,24 @@ public final class GameProgress {
     public static GameProgress initial(int cells, boolean replay) {
         GameProgress progress = new GameProgress();
         progress.notes = new int[cells];
+        progress.clickCounts = new long[cells];
+        progress.clickMissCounts = new long[cells];
         progress.replay = replay;
         return progress;
+    }
+
+    public void ensureClickStats(int cells) {
+        if (clickCounts == null || clickMissCounts == null) directValueEntryUsed = true;
+        if (clickCounts == null) clickCounts = new long[cells];
+        if (clickMissCounts == null) clickMissCounts = new long[cells];
+        if (clickCounts.length != cells || clickMissCounts.length != cells)
+            throw new IllegalStateException("Saved click statistics do not match the puzzle dimensions");
+    }
+
+    public Integer legacyAccuracy() {
+        if (directValueEntryUsed) return null;
+        if (totalClicks == 0) return 100;
+        return (int) Math.round((totalClicks - totalMissClicks) * 100.0 / totalClicks);
     }
 
     public void startTimer(GameplayClock clock) {
@@ -86,16 +107,23 @@ public final class GameProgress {
         int cell = command.cellIndex() == null ? -1 : command.cellIndex();
         switch (command.type()) {
             case SET_VALUE, CYCLE_VALUE, REVEAL -> {
+                if (command.type() == AttemptCommand.CommandType.CYCLE_VALUE
+                        && (command.value() == null || Math.abs(command.value()) != 1)) {
+                    throw ApiException.badRequest("Cycle direction must be 1 or -1");
+                }
+                if (command.type() == AttemptCommand.CommandType.CYCLE_VALUE
+                        && cell >= 0 && cell < puzzle.cellCount() && puzzle.givenAt(cell) != 0) {
+                    registerWastedClick();
+                    break;
+                }
                 requireEditableCell(puzzle, cell);
                 int value;
                 if (command.type() == AttemptCommand.CommandType.CYCLE_VALUE) {
-                    if (command.value() == null || Math.abs(command.value()) != 1) {
-                        throw ApiException.badRequest("Cycle direction must be 1 or -1");
-                    }
                     value = Math.floorMod(values[cell] + command.value(), puzzle.regionSizeAt(cell) + 1);
                 } else if (command.type() == AttemptCommand.CommandType.REVEAL) {
                     value = solution[cell];
                     reveals++;
+                    directValueEntryUsed = true;
                 } else {
                     value = command.value() == null ? -1 : command.value();
                 }
@@ -106,6 +134,11 @@ public final class GameProgress {
                     remember(values);
                     values[cell] = value;
                     notes[cell] = 0;
+                    if (command.type() == AttemptCommand.CommandType.CYCLE_VALUE) {
+                        registerValueClick(cell, puzzle.regionSizeAt(cell), value);
+                    } else {
+                        directValueEntryUsed = true;
+                    }
                     if (value != 0) {
                         valueEntryCount++;
                         if (value != solution[cell]) wrongEntryCount++;
@@ -124,17 +157,20 @@ public final class GameProgress {
             }
             case UNDO -> {
                 if (undo.isEmpty()) throw ApiException.conflict("There is no move to undo");
+                directValueEntryUsed = true;
                 redo.add(new Frame(values.clone(), notes.clone()));
                 restore(undo.removeLast(), values);
             }
             case REDO -> {
                 if (redo.isEmpty()) throw ApiException.conflict("There is no move to redo");
+                directValueEntryUsed = true;
                 undo.add(new Frame(values.clone(), notes.clone()));
                 restore(redo.removeLast(), values);
             }
             case CHECKPOINT -> checkpoint = new Frame(values.clone(), notes.clone());
             case RESTORE_CHECKPOINT -> {
                 if (checkpoint == null) throw ApiException.conflict("No checkpoint has been saved");
+                directValueEntryUsed = true;
                 remember(values);
                 restore(checkpoint, values);
             }
@@ -143,6 +179,7 @@ public final class GameProgress {
                     if (command.value() == null || command.value() < 0 || command.value() > 1) {
                         throw ApiException.badRequest("Conflict display must be 0 or 1");
                     }
+
                     showConflicts = command.value() == 1;
                     continuousConflictsUsed |= showConflicts;
                 }
@@ -177,6 +214,20 @@ public final class GameProgress {
         } else {
             conflicts = new int[0];
         }
+    }
+
+    private void registerValueClick(int cell, int regionSize, int value) {
+        totalClicks++;
+        clickCounts[cell]++;
+        int optimalClicks = value == 0 ? 0 : Math.min(value, regionSize - value + 1);
+        long missClicks = Math.max(0, clickCounts[cell] - optimalClicks);
+        totalMissClicks += missClicks - clickMissCounts[cell];
+        clickMissCounts[cell] = missClicks;
+    }
+
+    private void registerWastedClick() {
+        totalClicks++;
+        totalMissClicks++;
     }
 
     private void requireEditableCell(PuzzleDefinition puzzle, int cell) {

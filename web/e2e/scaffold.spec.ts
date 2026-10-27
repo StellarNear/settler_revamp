@@ -78,6 +78,58 @@ test("frozen v1 schemas accept real Java generation, completion and result respo
   expect(result.moveCount).toBe(1);
 });
 
+test("Titan max-five generation includes five-cell regions in the accepted board", async ({
+  request,
+}) => {
+  const bootstrap = bootstrapSchema.parse(
+    await (await request.get("/api/v1/bootstrap")).json(),
+  );
+  const headers = {
+    Origin: "http://localhost:18093",
+    "X-Tiwanaku-Token": bootstrap.requestToken,
+  };
+  const submitted = await request.post("/api/v1/generation-jobs", {
+    headers,
+    data: {
+      columns: 20,
+      rows: 12,
+      maxRegionSize: 5,
+      difficulty: "EASY",
+      seed: 2026,
+    },
+  });
+  expect(submitted.ok()).toBe(true);
+  const job = jobSchema.parse(await submitted.json());
+  await expect
+    .poll(
+      async () =>
+        jobSchema.parse(
+          await (
+            await request.get(`/api/v1/generation-jobs/${job.jobId}`)
+          ).json(),
+        ).status,
+      { timeout: 30_000 },
+    )
+    .toBe("GENERATED");
+  const createdResponse = await request.post("/api/v1/attempts", {
+    headers,
+    data: {
+      requestId: crypto.randomUUID(),
+      generationJobId: job.jobId,
+      editorSessionId: crypto.randomUUID(),
+    },
+  });
+  expect(createdResponse.ok()).toBe(true);
+  const board = attemptSchema.parse(await createdResponse.json());
+  const sizes = new Map<number, number>();
+  for (const regionId of board.regionIds) {
+    sizes.set(regionId, (sizes.get(regionId) ?? 0) + 1);
+  }
+  expect([...sizes.values()].every((size) => size <= 5)).toBe(true);
+  const regionSizes = [...sizes.values()];
+  expect(regionSizes).toContain(5);
+});
+
 test("real Java generation, routed play, saved entry and shell navigation", async ({
   page,
 }) => {
@@ -93,6 +145,7 @@ test("real Java generation, routed play, saved entry and shell navigation", asyn
     .click();
   await expect(page).toHaveURL(/\/play$/);
   await expect(page.locator(".cell")).toHaveCount(9);
+  await page.getByLabel("Click to change cycle", { exact: false }).uncheck();
   const move = await page.evaluate(async () => {
     const id = sessionStorage.getItem("tiwanaku.attemptId");
     const response = await fetch(

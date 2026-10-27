@@ -6,9 +6,13 @@ if (major < 22 || (major === 22 && minor < 12)) {
     "Release builds require Node >=22.12 and npm on PATH. Runtime needs Java 25 only.",
   );
 }
+const frontendCheck =
+  process.env.TIWANAKU_SKIP_FRONTEND_TESTS === "1"
+    ? "release:fast-check"
+    : "release:check";
 for (const args of [
   ["ci", "--no-audit", "--no-fund"],
-  ["run", "release:check"],
+  ["run", frontendCheck],
 ]) {
   const windows = process.platform === "win32";
   const result = spawnSync(

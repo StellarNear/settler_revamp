@@ -201,14 +201,24 @@ describe("Java-authoritative snapshot store", () => {
     expect(game.outcomeUnknown).toBe(false);
     expect(sessionStorage.getItem("tiwanaku.uncertainMutation")).toBeNull();
   });
-  it("does not send cycles or assistance against a given or absent selection", async () => {
+  it("sends a click-cycle for a given clue but not an absent selection or reveal", async () => {
     const game = await connectedStore();
     game.selectedCell = undefined;
     await game.cycleValue(1);
-    game.selectedCell = 1;
-    await game.cycleValue(-1);
-    await game.command("REVEAL");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    game.selectedCell = 1;
+    fetchMock.mockResolvedValueOnce(Response.json(fixture));
+    await game.cycleValue(-1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(
+      JSON.parse(fetchMock.mock.calls[2][1]?.body as string),
+    ).toMatchObject({
+      type: "CYCLE_VALUE",
+      cellIndex: 1,
+      value: -1,
+    });
+    await game.command("REVEAL");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
   it("reports a missing saved game without deleting its pointer or blocking new generation", async () => {
     fetchMock

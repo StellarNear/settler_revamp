@@ -85,19 +85,47 @@ class PuzzleGeneratorTest {
         int[][] presets = {{3, 3}, {4, 4}, {5, 5}, {7, 5}, {9, 5}, {15, 10}, {20, 12}};
         for (int[] preset : presets) {
             for (int maxRegionSize = 5; maxRegionSize <= 9; maxRegionSize++) {
-                for (long seed : new long[]{0, 2026, 3045}) {
-                    GeneratedPuzzle result = new PuzzleGenerator().generate(new GenerationSpec(
-                            preset[0], preset[1], maxRegionSize, Difficulty.EASY, seed,
-                            200, 2_000_000, Duration.ofSeconds(30), new CancellationToken()));
-                    String label = preset[0] + "x" + preset[1]
-                            + " maxRegion " + maxRegionSize + " seed " + seed;
-                    assertEquals(GenerationStatus.GENERATED, result.status(), label);
-                    assertTrue(largestRegion(result.puzzle()) <= maxRegionSize, label);
-                    assertTrue(BoardRules.isValidCompleteBoard(result.puzzle(), result.solution()), label);
-                    assertEquals(UniquenessStatus.PROVEN_UNIQUE,
-                            new ExactCoverSolver().solve(result.puzzle(), solverOptions(seed)).status(), label);
+                for (Difficulty difficulty : Difficulty.values()) {
+                    for (long seed : new long[]{0, 2026, 3045}) {
+                        GeneratedPuzzle result = new PuzzleGenerator().generate(new GenerationSpec(
+                                preset[0], preset[1], maxRegionSize, difficulty, seed,
+                                200, 2_000_000, Duration.ofSeconds(30), new CancellationToken()));
+                        String label = preset[0] + "x" + preset[1]
+                                + " maxRegion " + maxRegionSize
+                                + " difficulty " + difficulty + " seed " + seed;
+                        assertEquals(GenerationStatus.GENERATED, result.status(), label);
+                        assertRegionSizesWithinBounds(result.puzzle(), maxRegionSize, label);
+                        assertTrue(BoardRules.isValidCompleteBoard(result.puzzle(), result.solution()), label);
+                        assertTrue(countClues(result.puzzle()) >= difficulty.targetClues(result.puzzle().cellCount()), label);
+                        assertEquals(UniquenessStatus.PROVEN_UNIQUE,
+                                new ExactCoverSolver().solve(result.puzzle(), solverOptions(seed)).status(), label);
+                    }
                 }
             }
+        }
+    }
+
+    @Test
+    void generatesSixCellRegionsOnAnEvenTitanBoardWhenMaximumIsSix() {
+        GeneratedPuzzle result = new PuzzleGenerator().generate(
+                new GenerationSpec(
+                        20, 12, 6, Difficulty.EASY, 2026,
+                        200, 2_000_000, Duration.ofSeconds(30), new CancellationToken()));
+
+        assertEquals(GenerationStatus.GENERATED, result.status());
+        assertEquals(6, largestRegion(result.puzzle()));
+    }
+
+    @Test
+    void includesFiveCellRegionsOnTitanWhenMaximumIsFive() {
+        for (long seed : new long[]{0, 2026, 3045}) {
+            GeneratedPuzzle result = new PuzzleGenerator().generate(new GenerationSpec(
+                    20, 12, 5, Difficulty.EASY, seed,
+                    200, 2_000_000, Duration.ofSeconds(30), new CancellationToken()));
+
+            assertEquals(GenerationStatus.GENERATED, result.status(), "seed " + seed);
+            assertEquals(5, largestRegion(result.puzzle()), "seed " + seed);
+            assertTrue(BoardRules.isValidCompleteBoard(result.puzzle(), result.solution()), "seed " + seed);
         }
     }
 
@@ -162,5 +190,12 @@ class PuzzleGeneratorTest {
             largest = Math.max(largest, puzzle.regionSize(region));
         }
         return largest;
+    }
+
+    private static void assertRegionSizesWithinBounds(PuzzleDefinition puzzle, int maxRegionSize, String label) {
+        for (int region = 0; region < puzzle.regionCount(); region++) {
+            assertTrue(puzzle.regionSize(region) >= 1, label + " region " + region + " is empty");
+            assertTrue(puzzle.regionSize(region) <= maxRegionSize, label + " region " + region + " exceeds maximum");
+        }
     }
 }

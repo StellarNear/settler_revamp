@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.apogames.tiwanaku.engine.PuzzleGeneratorTest
 -------------------------------------------------------------------------------
-Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 11.69 s -- in com.apogames.tiwanaku.engine.PuzzleGeneratorTest
+Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 64.54 s -- in com.apogames.tiwanaku.engine.PuzzleGeneratorTest

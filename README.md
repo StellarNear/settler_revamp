@@ -10,33 +10,46 @@ Node.js and an internet connection are not needed to run a built release.
 - **Build:** JDK 25, Node.js >=22.12, and npm. Set `JAVA_HOME` to your JDK 25
   installation before running Maven.
 
-## Package the application
+## Build the application
 
-From the repository root in PowerShell, stop any Tiwanaku process using the
-output JAR, then run:
+From the repository root, use one of these Windows command scripts. Close the
+game first before building; Windows will not replace the launch JAR while
+Tiwanaku is using it.
 
-```powershell
-.\mvnw.cmd -Prelease clean verify
+```cmd
+build-fast.cmd
 ```
 
-This checks/builds the Vue UI, runs the Java tests, packages the executable JAR,
-and runs its isolated startup/API smoke test. The result is
-`server\target\tiwanaku.jar`. The first build may need internet access to obtain
-Maven/npm dependencies.
+`build-fast.cmd` creates the release JAR without running Java or frontend unit
+tests or the standalone-JAR smoke test. It still runs frontend type checking,
+lint, formatting checks, and the production build.
+
+For the full verification build, including Java and frontend tests and the
+standalone-JAR smoke test, run:
+
+```cmd
+build.cmd
+```
+
+Both scripts use the release Maven profile and update `server\target\tiwanaku.jar`.
+The first build may need internet access to obtain Maven/npm dependencies. Do
+not use plain `mvn package` to update the game you launch: the default
+incremental build writes under `server\target\p02-build` and may leave the
+release JAR unchanged.
 
 ## Launch the game
 
-From the repository root:
+From the repository root, run:
 
-```powershell
-java -jar server\target\tiwanaku.jar
+```cmd
+launch-game.cmd
 ```
 
 Open [http://localhost:8080](http://localhost:8080) while the Java process is
 running. Stop it with Ctrl+C. For an orderly console shutdown instead:
 
-```powershell
-java -jar server\target\tiwanaku.jar --console
+```cmd
+launch-game.cmd --console
 ```
 
 Type `quit` and press Enter; closing standard input also stops console mode.

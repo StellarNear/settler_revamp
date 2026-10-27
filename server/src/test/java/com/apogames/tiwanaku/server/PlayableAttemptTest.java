@@ -163,6 +163,60 @@ class PlayableAttemptTest {
     }
 
     @Test
+    void legacyClickAccuracyUsesTheCheapestDirectionAndCountsWastedClueClicks() {
+        assertEquals(100, current().progress().legacyAccuracy());
+        AttemptSnapshot fromMaximum = send("CYCLE_VALUE", 0, -1);
+        assertEquals(3, fromMaximum.values()[0]);
+        assertEquals(1, fromMaximum.progress().totalClicks());
+        assertEquals(0, fromMaximum.progress().totalMissClicks());
+        assertEquals(100, fromMaximum.progress().legacyAccuracy());
+
+        AttemptSnapshot cleared = send("CYCLE_VALUE", 0, 1);
+        assertEquals(0, cleared.values()[0]);
+        assertEquals(2, cleared.progress().totalClicks());
+        assertEquals(2, cleared.progress().totalMissClicks());
+        assertEquals(0, cleared.progress().legacyAccuracy());
+
+        AttemptSnapshot clueClick = send("CYCLE_VALUE", 2, -1);
+        assertEquals(3, clueClick.values()[2]);
+        assertEquals(3, clueClick.progress().totalClicks());
+        assertEquals(3, clueClick.progress().totalMissClicks());
+        assertEquals(0, clueClick.progress().legacyAccuracy());
+    }
+
+    @Test
+    void clickAccuracyIsSavedInHistoryWhenTheMouseCycleCompletesThePuzzle() {
+        send("CYCLE_VALUE", 0, 1);
+        send("CYCLE_VALUE", 1, -1);
+        AttemptSnapshot completed = send("CYCLE_VALUE", 1, -1);
+
+        assertEquals("COMPLETED", completed.status());
+        assertEquals(3, completed.progress().totalClicks());
+        assertEquals(0, completed.progress().totalMissClicks());
+        assertEquals(100, completed.progress().legacyAccuracy());
+        assertEquals("legacy-clicks-v1", jdbc.queryForObject(
+                "SELECT scoring_version FROM history_entries WHERE record_id=?",
+                String.class, id.toString()));
+        assertEquals(100, jdbc.queryForObject(
+                "SELECT legacy_accuracy FROM history_entries WHERE record_id=?",
+                Integer.class, id.toString()));
+        assertEquals(3L, jdbc.queryForObject(
+                "SELECT total_clicks FROM history_entries WHERE record_id=?",
+                Long.class, id.toString()));
+        assertEquals(0L, jdbc.queryForObject(
+                "SELECT total_miss_clicks FROM history_entries WHERE record_id=?",
+                Long.class, id.toString()));
+    }
+
+    @Test
+    void directValueEntryDoesNotClaimLegacyClickAccuracy() {
+        AttemptSnapshot direct = send("SET_VALUE", 0, 1);
+
+        assertNull(direct.progress().legacyAccuracy());
+        assertTrue(direct.progress().directValueEntryUsed());
+    }
+
+    @Test
     void timerHeartbeatIsMonotonicBoundedIdempotentAndDoesNotAdvanceGameplayRevision() {
         long revision = send("SET_VALUE", 0, 1).revision();
         clock.advance(5_000);

@@ -16,6 +16,7 @@ async function openGame(
   request: APIRequestContext,
   columns = 3,
   rows = 3,
+  clickCycle = false,
 ) {
   const bootstrap = bootstrapSchema.parse(
     await (await request.get("/api/v1/bootstrap")).json(),
@@ -72,8 +73,45 @@ async function openGame(
   await page.goto("/play");
   await expect(page.locator(".cell")).toHaveCount(columns * rows);
   await expect(page.locator(".board-meta")).toContainText("READY");
+  const clickCycleToggle = page.getByLabel("Click to change cycle", {
+    exact: false,
+  });
+  if (!clickCycle) await clickCycleToggle.uncheck();
   return { board, headers, editorSessionId };
 }
+
+test("left/right board clicks cycle values and show legacy accuracy by default", async ({
+  page,
+  request,
+}) => {
+  const { board } = await openGame(page, request, 3, 3, true);
+  const cell = board.givens.indexOf(0);
+  const target = page.locator(".cell").nth(cell);
+  const regionId = board.regionIds[cell];
+  const regionSize = board.regionIds.filter((id) => id === regionId).length;
+
+  await expect(
+    page.getByText("Click accuracy: 100%", { exact: false }),
+  ).toBeVisible();
+  await target.click();
+  await expect(target.locator(".cell-value")).toHaveText("1");
+  await expect(page.locator(".selected-region-boundary")).toBeVisible();
+  await expect(page.locator(".selected-region")).toContainText(
+    `REGION ${regionId + 1}`,
+  );
+  await expect(page.locator(".selected-region")).toContainText(
+    `${regionSize} cells`,
+  );
+  await expect(
+    page.getByText("Click accuracy: 100%", { exact: false }),
+  ).toBeVisible();
+
+  await target.click({ button: "right" });
+  await expect(target.locator(".cell-value")).toHaveCount(0);
+  await expect(
+    page.getByText("Click accuracy: 0%", { exact: false }),
+  ).toBeVisible();
+});
 
 test("notes, assistance, cycling, history, pause/reload and replay are Java-persisted", async ({
   page,
@@ -100,7 +138,7 @@ test("notes, assistance, cycling, history, pause/reload and replay are Java-pers
     .getByRole("button", { name: "Save checkpoint", exact: true })
     .click();
   await page.getByLabel("Manual notes", { exact: false }).uncheck();
-  await page.getByLabel("Legacy click cycle", { exact: false }).check();
+  await page.getByLabel("Click to change cycle", { exact: false }).check();
   await page.locator(".cell").nth(cell).click();
   await expect(page.locator(".board-meta")).toContainText("PLAYING");
   await expect(page.locator(".cell").nth(cell)).toHaveText("1");

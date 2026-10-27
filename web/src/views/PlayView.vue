@@ -5,13 +5,24 @@ import { useI18n } from "vue-i18n";
 import { useGameStore } from "../stores/game";
 import { useDataStore } from "../stores/data";
 import TerrainBoard from "../components/TerrainBoard.vue";
-import { regionTerrain } from "../terrain";
+import { assignRegionBiomes, biomes } from "../terrain";
 const game = useGameStore();
 const data = useDataStore();
 const terrainBoard = ref<InstanceType<typeof TerrainBoard>>();
 const selectedRegion = computed(
   () => game.attempt?.regionIds[game.selectedCell ?? -1],
 );
+const selectedBiome = computed(() => {
+  const attempt = game.attempt;
+  const region = selectedRegion.value;
+  if (!attempt || region === undefined) return undefined;
+  const biome = assignRegionBiomes(
+    attempt.columns,
+    attempt.rows,
+    attempt.regionIds,
+  ).get(region);
+  return biome === undefined ? undefined : biomes[biome];
+});
 const help = ref<HTMLDialogElement>();
 const { t } = useI18n();
 const time = computed(() => {
@@ -210,20 +221,42 @@ onUnmounted(() => {
         />
         <aside class="play-inspector" aria-label="Puzzle tools and selection">
           <h2>Field notes</h2>
-          <p v-if="selectedRegion !== undefined" class="selected-region">
-            Region {{ selectedRegion + 1 }} ·
-            {{ regionTerrain(selectedRegion)?.name }} ·
-            {{ game.maxEntry }} cells <br />Row
-            {{
-              Math.floor((game.selectedCell ?? 0) / game.attempt.columns) + 1
-            }}, column
-            {{ ((game.selectedCell ?? 0) % game.attempt.columns) + 1 }} ·
-            {{
-              game.attempt.givens[game.selectedCell ?? -1]
-                ? "Fixed clue"
-                : "Editable"
-            }}
-          </p>
+          <div
+            v-if="selectedRegion !== undefined"
+            class="selected-region"
+            aria-label="Selected region details"
+          >
+            <div class="region-inspector-heading">
+              <i
+                aria-hidden="true"
+                :style="{
+                  background: selectedBiome?.color,
+                }"
+              ></i>
+              <div>
+                <span>REGION {{ selectedRegion + 1 }}</span>
+                <strong>{{ selectedBiome?.name }}</strong>
+              </div>
+              <b>{{ game.maxEntry }} cells</b>
+            </div>
+            <div class="region-cell-meta">
+              <span
+                >Row
+                {{
+                  Math.floor((game.selectedCell ?? 0) / game.attempt.columns) +
+                  1
+                }}, column
+                {{
+                  ((game.selectedCell ?? 0) % game.attempt.columns) + 1
+                }}</span
+              >
+              <span>{{
+                game.attempt.givens[game.selectedCell ?? -1]
+                  ? "Fixed clue"
+                  : "Editable cell"
+              }}</span>
+            </div>
+          </div>
           <p v-else class="selected-region">
             Select a cell to inspect its region and enter values.
           </p>
@@ -234,7 +267,7 @@ onUnmounted(() => {
               (N)</label
             >
             <label
-              ><input v-model="game.cycleMode" type="checkbox" />Legacy click
+              ><input v-model="game.cycleMode" type="checkbox" />Click to change
               cycle (left + / right −)</label
             >
             <label
@@ -345,6 +378,16 @@ onUnmounted(() => {
                 ? " · continuous conflicts used"
                 : ""
             }}.
+          </p>
+          <p v-if="game.attempt.progress.legacyAccuracy !== null">
+            Click accuracy: {{ game.attempt.progress.legacyAccuracy }}% ({{
+              game.attempt.progress.totalClicks
+            }}
+            clicks, {{ game.attempt.progress.totalMissClicks }} non-optimal)
+          </p>
+          <p v-else>
+            Click accuracy is unavailable after direct value entry; the
+            completed result will retain the entry/error counts instead.
           </p>
           <p v-if="game.attempt.status === 'COMPLETED'" class="completion">
             Result saved · {{ time }} active ·

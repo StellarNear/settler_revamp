@@ -301,9 +301,13 @@ test("deterministic concave/hole terrain, notes 1–9, all themes and reduced de
     await expect(
       page.locator(".terrain-region[data-region='0'] path").first(),
     ).not.toHaveAttribute("d", /M1 1/);
-    await expect(
-      page.locator(".terrain-region[data-region='4']"),
-    ).toHaveAttribute("data-biome", "Forest");
+    const outerBiome = await page
+      .locator(".terrain-region[data-region='0']")
+      .getAttribute("data-biome");
+    const innerBiome = await page
+      .locator(".terrain-region[data-region='4']")
+      .getAttribute("data-biome");
+    expect(innerBiome).not.toBe(outerBiome);
     const notes = page.locator(".cell").nth(34).locator(".manual-notes");
     expect(await notes.locator("span").allTextContents()).toEqual([
       "1",

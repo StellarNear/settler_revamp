@@ -37,7 +37,7 @@ export const useGameStore = defineStore("game", () => {
   const pending = ref(false);
   const cancelling = ref(false);
   const noteMode = ref(false);
-  const cycleMode = ref(false);
+  const cycleMode = ref(true);
   const playVisible = ref(false);
   const pauseRequested = ref(false);
   const outcomeUnknown = ref(false);
@@ -411,13 +411,7 @@ export const useGameStore = defineStore("game", () => {
     )
       return;
     if (
-      [
-        "SET_VALUE",
-        "CYCLE_VALUE",
-        "TOGGLE_NOTE",
-        "CANDIDATES",
-        "REVEAL",
-      ].includes(type) &&
+      ["SET_VALUE", "TOGGLE_NOTE", "CANDIDATES", "REVEAL"].includes(type) &&
       (cell === undefined || current.givens[cell] !== 0)
     )
       return;
