@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.SplittableRandom;
 
 public final class PuzzleGenerator {
+    private static final long PARTITION_SEARCH_NODE_LIMIT = 20_000;
     private final ExactCoverSolver solver;
 
     public PuzzleGenerator() {
@@ -33,9 +34,14 @@ public final class PuzzleGenerator {
             }
             PuzzleDefinition regionLayout = new PuzzleDefinition(
                     spec.columns(), spec.rows(), regionIds, new int[spec.columns() * spec.rows()]);
-            SearchResult initial = solve(regionLayout, spec, startedAt, timeoutNanos, spec.maxSearchNodes() - visitedNodes);
+            long partitionBudget = Math.min(PARTITION_SEARCH_NODE_LIMIT, spec.maxSearchNodes() - visitedNodes);
+            SearchResult initial = solve(regionLayout, spec, startedAt, timeoutNanos, partitionBudget);
             visitedNodes += initial.visitedNodes();
             if (initial.status() == UniquenessStatus.UNKNOWN) {
+                if (initial.termination() == SearchTermination.NODE_BUDGET_EXCEEDED
+                        && visitedNodes < spec.maxSearchNodes()) {
+                    continue;
+                }
                 return unknown(initial.termination(), attempt, visitedNodes, spec.seed());
             }
             if (initial.status() == UniquenessStatus.NO_SOLUTION) {
@@ -147,6 +153,10 @@ public final class PuzzleGenerator {
             long timeoutNanos,
             SplittableRandom random) {
         int cellCount = spec.columns() * spec.rows();
+        if (spec.columns() > 1 && spec.rows() > 1 && cellCount >= 8 && spec.maxRegionSize() < 8
+                && (spec.columns() % 2 != 0 || spec.rows() % 2 != 0)) {
+            return createSnakePartition(spec, random);
+        }
         int[] regionIds = new int[cellCount];
         java.util.Arrays.fill(regionIds, -1);
         if (cellCount == 1) {
@@ -226,6 +236,46 @@ public final class PuzzleGenerator {
         }
         mergeAdjacentRegions(regionIds, regionSizes, spec, random);
         return normalizeRegionIds(regionIds, regionSizes);
+    }
+
+    private int[] createSnakePartition(GenerationSpec spec, SplittableRandom random) {
+        int cellCount = spec.columns() * spec.rows();
+        boolean[] partitionable = new boolean[cellCount + 1];
+        partitionable[0] = true;
+        for (int count = 4; count <= cellCount; count++) {
+            for (int size = 4; size <= spec.maxRegionSize() && size <= count; size++) {
+                partitionable[count] |= partitionable[count - size];
+            }
+        }
+        if (!partitionable[cellCount]) {
+            return null;
+        }
+        // Avoid the unsatisfiable touching perimeter dominoes of odd-sized block layouts.
+        boolean transpose = random.nextBoolean();
+        boolean reverse = random.nextBoolean();
+        int width = transpose ? spec.rows() : spec.columns();
+        int[] regionIds = new int[cellCount];
+        int position = 0;
+        int region = 0;
+        while (position < cellCount) {
+            List<Integer> sizes = new ArrayList<>();
+            for (int size = 4; size <= spec.maxRegionSize() && size <= cellCount - position; size++) {
+                if (partitionable[cellCount - position - size]) {
+                    sizes.add(size);
+                }
+            }
+            int size = sizes.get(random.nextInt(sizes.size()));
+            for (int offset = 0; offset < size; offset++) {
+                int step = reverse ? cellCount - 1 - position : position;
+                int y = step / width;
+                int x = y % 2 == 0 ? step % width : width - 1 - step % width;
+                int cell = transpose ? x * spec.columns() + y : y * spec.columns() + x;
+                regionIds[cell] = region;
+                position++;
+            }
+            region++;
+        }
+        return regionIds;
     }
 
     private void addRegion(int[] regionIds, List<Integer> regionSizes, int... cells) {

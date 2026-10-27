@@ -1,4 +1,146 @@
 # Tiwanaku
+
+## Local Java 25 + Vue rewrite (in progress)
+
+From the repository root, using Java 25:
+
+```powershell
+java -jar server\target\tiwanaku.jar
+```
+
+Open `http://localhost:8080`. Java must remain running. The Vue UI is bundled
+in the JAR; Node and an internet connection are not runtime requirements.
+The minimal engine/server slice is verified. Internet-disconnected cold-launch
+testing was explicitly waived by the user; it has not been reported as passed.
+The scaffold is still a work in progress, not the finished visual/gameplay rework.
+
+If the browser reports `ERR_CONNECTION_REFUSED`, check that the Java terminal
+is still running and has printed `Tiwanaku ready: http://localhost:8080`.
+Use the URL printed there if you configured a different port.
+The rewrite displays `TIWANAKU / LOCAL`; a black canvas requesting `app.js`
+belongs to the legacy page, not the bundled Vue UI. Open the server URL directly
+rather than a local HTML file or the legacy development server. If an old page
+persists at that URL, try a hard refresh (`Ctrl+Shift+R`) or a private window.
+
+Storage is an embedded H2 file, not a separately installed database server.
+The default directory is `${user.home}/.tiwanaku`; an absolute
+`TIWANAKU_DATA_DIR` overrides it. Do not delete this directory to fix a launch error.
+
+### Backend diagnostics
+
+The server writes console output and dated files such as
+`${user.home}/.tiwanaku/logs/game_2026-10-27.0.log` (or `logs` inside
+`TIWANAKU_DATA_DIR`). The startup message prints the log directory.
+Files roll at 10 MB and daily, with 14 days / 100 MB of retained archives.
+Generation settings/seeds/outcomes, accepted commands/revisions and rejected API
+requests with their reasons are recorded; request tokens and full board snapshots
+are not logged. Logs contain local game identifiers and move details.
+
+For a bug report, note the approximate time and keep the latest log file.
+A 409 can mean a rule-breaking move, an expired/other-tab editor lease, or a stale
+revision; the UI now displays the server's specific reason rather than generic JSON.
+An earlier generic 409 cannot be diagnosed retroactively from its status alone.
+After a server restart, use **Reconnect** (or reload) to restore the saved game.
+Conflicting commands refresh the saved snapshot and ask you to review/retry;
+they are never automatically replayed or queued.
+
+### Recovering an earlier rewrite database
+
+An earlier prototype used an empty H2 username and a schema without Flyway history.
+If startup reports `Wrong user name or password [28000-232]` for that database,
+stop all Tiwanaku Java processes and run this one-time command:
+
+```powershell
+java -jar server\target\tiwanaku.jar --migrate-legacy-store
+java -jar server\target\tiwanaku.jar
+```
+
+Use the same `TIWANAKU_DATA_DIR` setting for both commands, if you set one.
+The migration holds the exclusive data-directory lock, accepts only the recognized
+prototype table/column layout, creates a consistent H2 ZIP backup under `backups`,
+preserves existing rows and notes, registers the initial Flyway baseline, and
+normalizes the prototype database login. It does not start the web server.
+Unknown schemas or failed backups stop migration; no database reset is performed.
+Run it only once. If it fails, keep the directory and printed backup intact and
+report the error rather than repeatedly running it or deleting files.
+
+To restore a backup for investigation, stop Java, extract its `tiwanaku.mv.db` into
+a **different empty directory**, and point `TIWANAKU_DATA_DIR` there. A pre-migration
+backup still uses the prototype login, so run the migration on that restored copy
+before normal launch. Keep the original data directory untouched.
+
+### Building and checking the current rewrite
+
+```powershell
+Push-Location web
+npm.cmd ci
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd run format:check
+npm.cmd run test:unit -- --run
+npm.cmd run build
+Pop-Location
+.\mvnw.cmd -B verify
+Copy-Item server\target\p02-build\tiwanaku.jar server\target\tiwanaku.jar
+```
+
+The isolated Maven output directory avoids pre-existing compiled server classes.
+The integrated release build is a later packet. After packaging, run the real-server
+browser tests:
+
+```powershell
+Push-Location web
+# Use installed Edge on Windows, or install Playwright Chromium with:
+# npx.cmd playwright install chromium
+$env:PLAYWRIGHT_CHANNEL = "msedge"
+npm.cmd run test:e2e
+Remove-Item Env:\PLAYWRIGHT_CHANNEL
+Pop-Location
+```
+
+The test runner owns a Java process on port 18093, uses a unique temporary H2
+directory, and stops Java/removes that directory on normal teardown. An occupied
+port fails rather than reusing another server. It never uses the real saved database.
+Only replace the launch JAR after stopping any process using it.
+
+### P03 scaffold and frozen v1 boundaries
+
+Routes are `/setup`, `/play`, `/history`, and `/settings`. Java serves their SPA
+entry without caching HTML; missing API/asset paths remain 404, never SPA HTML.
+Pinia holds validated server snapshots and transient selection/setup state only.
+Browser session storage contains editor/attempt IDs, not boards or results.
+History management, durable settings, full EN/DE translations, advanced controls
+and terrain artwork remain later packets; the scaffold labels unavailable views
+honestly.
+
+The runtime schemas in `web/src/api.ts` and the real-Java serialization/E2E
+fixtures define the frozen **v1** boundary. All response fields are required;
+nullable fields are explicit JSON nulls. Unknown fields/enum values, unsafe
+integers and inconsistent board lengths are rejected. Unknown JSON request
+properties are also rejected by Java. A version/schema mismatch pauses editing
+and requires matching server/UI versions; a restarted server requires reconnect
+with a fresh process token and saved snapshot.
+
+| Boundary | Shape / behavior |
+| --- | --- |
+| `GET /api/v1/bootstrap` | `apiVersion=v1`, process UUID/token, `maxCells=240`, `maxRegionSize=9` |
+| Generation submission | columns/rows (at most 240 cells), maximum 5..9, EASY/MEDIUM/HARD, safe-integer seed |
+| Generation job | UUID, explicit status/termination, nullable error, elapsed milliseconds and visited nodes |
+| Attempt creation | request ID, completed job UUID, editor-session ID; idempotent by request ID |
+| Attempt snapshot | attempt/puzzle UUIDs, dimensions, region IDs/givens/values, status, revision, owner/lease, move count |
+| Command | command ID, expected revision, editor-session ID, SET_VALUE/PAUSE/RESUME/TAKEOVER; SET_VALUE has cell index/value |
+| `GET /api/v1/attempts/{id}/result` | result/attempt UUIDs, completed values, move count, ISO completion instant, nullable player tag; 404 until a result exists |
+| API rejection | HTTP status plus ProblemDetail `detail` for application conflicts; no success-shaped fallback |
+
+No mutation is optimistically applied. Only one mutation is in flight; extra
+input is dropped, not queued. Epoch/revision guards prevent delayed polling
+responses overwriting newer snapshots. Future schema changes require a new
+Flyway migration; do not rewrite the released `V1__initial_local_store.sql`.
+The explicit prototype compatibility migration remains separate and preserves
+its historical notes column.
+
+## Legacy application
+
 # to launch on the local environment user this command :
 C:\Users\ho.jchatron\Documents\local_bin\jdk-17.0.20.1\bin\java.exe -classpath gradle\wrapper\gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain :teavm:run
 

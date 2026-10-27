@@ -30,6 +30,11 @@ public final class LocalRequestSecurityFilter extends OncePerRequestFilter {
             HttpServletRequest request,
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
+        if (request.getRequestURI().startsWith("/api/")
+                || Set.of("/", "/index.html", "/setup", "/play", "/history", "/settings")
+                        .contains(request.getRequestURI())) {
+            response.setHeader("Cache-Control", "no-store");
+        }
         if (!isLoopbackClient(request) || !isAllowedHost(request) || !isAllowedOrigin(request)) {
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "Request must use the local application origin");
             return;

@@ -81,6 +81,39 @@ class PuzzleGeneratorTest {
     }
 
     @Test
+    void generatesSupportedRegionSizesAcrossEveryPresetAndMultipleSeeds() {
+        int[][] presets = {{3, 3}, {4, 4}, {5, 5}, {7, 5}, {9, 5}, {15, 10}, {20, 12}};
+        for (int[] preset : presets) {
+            for (int maxRegionSize = 5; maxRegionSize <= 9; maxRegionSize++) {
+                for (long seed : new long[]{0, 2026, 3045}) {
+                    GeneratedPuzzle result = new PuzzleGenerator().generate(new GenerationSpec(
+                            preset[0], preset[1], maxRegionSize, Difficulty.EASY, seed,
+                            200, 2_000_000, Duration.ofSeconds(30), new CancellationToken()));
+                    String label = preset[0] + "x" + preset[1]
+                            + " maxRegion " + maxRegionSize + " seed " + seed;
+                    assertEquals(GenerationStatus.GENERATED, result.status(), label);
+                    assertTrue(largestRegion(result.puzzle()) <= maxRegionSize, label);
+                    assertTrue(BoardRules.isValidCompleteBoard(result.puzzle(), result.solution()), label);
+                    assertEquals(UniquenessStatus.PROVEN_UNIQUE,
+                            new ExactCoverSolver().solve(result.puzzle(), solverOptions(seed)).status(), label);
+                }
+            }
+        }
+    }
+
+    @Test
+    void neverCertifiesWhenTheGlobalNodeBudgetIsExhausted() {
+        GeneratedPuzzle result = new PuzzleGenerator().generate(new GenerationSpec(
+                7, 5, 5, Difficulty.EASY, 0,
+                200, 1, Duration.ofSeconds(5), new CancellationToken()));
+        assertEquals(GenerationStatus.UNKNOWN, result.status());
+        assertEquals(SearchTermination.NODE_BUDGET_EXCEEDED, result.termination());
+        assertNull(result.puzzle());
+        assertNull(result.solution());
+        assertTrue(result.visitedNodes() <= 1);
+    }
+
+    @Test
     void respectsEverySupportedMaximumRegionSize() {
         for (int maxRegionSize = 5; maxRegionSize <= 9; maxRegionSize++) {
             GeneratedPuzzle result = new PuzzleGenerator().generate(

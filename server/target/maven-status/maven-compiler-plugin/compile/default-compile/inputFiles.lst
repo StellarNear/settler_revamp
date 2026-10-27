@@ -1,5 +1,14 @@
+C:\Users\ho.jchatron\Documents\gitRepos\settler\server\src\main\java\com\apogames\tiwanaku\server\ApiException.java
+C:\Users\ho.jchatron\Documents\gitRepos\settler\server\src\main\java\com\apogames\tiwanaku\server\AttemptCommand.java
+C:\Users\ho.jchatron\Documents\gitRepos\settler\server\src\main\java\com\apogames\tiwanaku\server\AttemptController.java
+C:\Users\ho.jchatron\Documents\gitRepos\settler\server\src\main\java\com\apogames\tiwanaku\server\AttemptService.java
+C:\Users\ho.jchatron\Documents\gitRepos\settler\server\src\main\java\com\apogames\tiwanaku\server\AttemptSnapshot.java
 C:\Users\ho.jchatron\Documents\gitRepos\settler\server\src\main\java\com\apogames\tiwanaku\server\BootstrapController.java
+C:\Users\ho.jchatron\Documents\gitRepos\settler\server\src\main\java\com\apogames\tiwanaku\server\CreateAttemptRequest.java
 C:\Users\ho.jchatron\Documents\gitRepos\settler\server\src\main\java\com\apogames\tiwanaku\server\DataDirectoryLock.java
+C:\Users\ho.jchatron\Documents\gitRepos\settler\server\src\main\java\com\apogames\tiwanaku\server\GenerationController.java
+C:\Users\ho.jchatron\Documents\gitRepos\settler\server\src\main\java\com\apogames\tiwanaku\server\GenerationJobService.java
+C:\Users\ho.jchatron\Documents\gitRepos\settler\server\src\main\java\com\apogames\tiwanaku\server\GenerationRequest.java
 C:\Users\ho.jchatron\Documents\gitRepos\settler\server\src\main\java\com\apogames\tiwanaku\server\LocalRequestSecurityFilter.java
 C:\Users\ho.jchatron\Documents\gitRepos\settler\server\src\main\java\com\apogames\tiwanaku\server\LocalRequestToken.java
 C:\Users\ho.jchatron\Documents\gitRepos\settler\server\src\main\java\com\apogames\tiwanaku\server\LoopbackServerConfiguration.java

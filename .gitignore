@@ -116,3 +116,11 @@ Thumbs.db
 .claude/
 
 teavm/build/
+
+/server/target/p02-build/
+/server/target/tiwanaku.jar
+/web/node_modules/
+/web/dist/
+/web/*.tsbuildinfo
+/web/test-results/
+/web/playwright-report/

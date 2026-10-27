@@ -93,7 +93,6 @@ public final class DataDirectoryLock implements AutoCloseable {
             }
             throw exception;
         }
-        System.out.println("Tiwanaku data directory: " + directory);
         return new DataDirectoryLock(directory, channel, lock);
     }
 
