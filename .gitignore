@@ -18,16 +18,16 @@ www-test/
 .gwt-tmp/
 
 ## Android Studio and Intellij and Android in general
-/android/libs/armeabi-v7a/
-/android/libs/arm64-v8a/
-/android/libs/x86/
-/android/libs/x86_64/
-/android/gen/
+/legacy/android/libs/armeabi-v7a/
+/legacy/android/libs/arm64-v8a/
+/legacy/android/libs/x86/
+/legacy/android/libs/x86_64/
+/legacy/android/gen/
 .idea/
 *.ipr
 *.iws
 *.iml
-/android/out/
+/legacy/android/out/
 com_crashlytics_export_strings.xml
 
 ## Eclipse
@@ -35,10 +35,10 @@ com_crashlytics_export_strings.xml
 .classpath
 .project
 .metadata/
-/android/bin/
-/core/bin/
-/desktop/bin/
-/html/bin/
+/legacy/android/bin/
+/legacy/core/bin/
+/legacy/desktop/bin/
+/legacy/html/bin/
 /ios/bin/
 *.tmp
 *.bak
@@ -52,38 +52,38 @@ com_crashlytics_export_strings.xml
 ## NetBeans
 
 /nbproject/private/
-/android/nbproject/private/
-/core/nbproject/private/
-/desktop/nbproject/private/
-/html/nbproject/private/
+/legacy/android/nbproject/private/
+/legacy/core/nbproject/private/
+/legacy/desktop/nbproject/private/
+/legacy/html/nbproject/private/
 /ios/nbproject/private/
 
 /build/
-/android/build/
-/core/build/
-/desktop/build/
-/html/build/
+/legacy/android/build/
+/legacy/core/build/
+/legacy/desktop/build/
+/legacy/html/build/
 /ios/build/
 
 /nbbuild/
-/android/nbbuild/
-/core/nbbuild/
-/desktop/nbbuild/
-/html/nbbuild/
+/legacy/android/nbbuild/
+/legacy/core/nbbuild/
+/legacy/desktop/nbbuild/
+/legacy/html/nbbuild/
 /ios/nbbuild/
 
 /dist/
-/android/dist/
-/core/dist/
-/desktop/dist/
-/html/dist/
+/legacy/android/dist/
+/legacy/core/dist/
+/legacy/desktop/dist/
+/legacy/html/dist/
 /ios/dist/
 
 /nbdist/
-/android/nbdist/
-/core/nbdist/
-/desktop/nbdist/
-/html/nbdist/
+/legacy/android/nbdist/
+/legacy/core/nbdist/
+/legacy/desktop/nbdist/
+/legacy/html/nbdist/
 /ios/nbdist/
 
 nbactions.xml
@@ -91,14 +91,16 @@ nb-configuration.xml
 
 ## Gradle
 
-/local.properties
+/legacy/local.properties
 .gradle/
 gradle-app.setting
 /build/
-/android/build/
-/core/build/
-/desktop/build/
-/html/build/
+/legacy/build/
+/legacy/**/build/
+/legacy/android/build/
+/legacy/core/build/
+/legacy/desktop/build/
+/legacy/html/build/
 /ios/build/
 
 ## OS Specific
@@ -115,7 +117,7 @@ Thumbs.db
 
 .claude/
 
-teavm/build/
+/legacy/teavm/build/
 
 /server/target/
 /web/node_modules/
