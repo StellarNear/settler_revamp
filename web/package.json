@@ -1,0 +1,36 @@
+{
+  "name": "tiwanaku-local-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vue-tsc -b && vite build",
+    "typecheck": "vue-tsc -b --pretty false",
+    "lint": "eslint .",
+    "format:check": "prettier --check src e2e *.ts *.js *.json",
+    "test:unit": "vitest",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "vue": "3.5.44",
+    "pinia": "3.0.3",
+    "vue-router": "4.6.3",
+    "vue-i18n": "11.1.12",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "24.9.2",
+    "@eslint/js": "9.39.5",
+    "@playwright/test": "1.56.1",
+    "@vitejs/plugin-vue": "6.0.1",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vue-tsc": "3.1.1",
+    "eslint": "9.39.5",
+    "eslint-plugin-vue": "10.5.1",
+    "prettier": "3.6.2",
+    "typescript-eslint": "8.46.2",
+    "vitest": "4.1.12"
+  }
+}
