@@ -114,7 +114,7 @@ public final class GenerationJobService implements AutoCloseable {
     private void run(Job job, GenerationSpec spec) {
         job.startedAt = Instant.now();
         try {
-            GeneratedPuzzle result = generator.generate(spec);
+            GeneratedPuzzle result = generator.generate(spec, job::reportProgress);
             job.complete(result);
             LOGGER.info("Generation ended job={} status={} termination={} elapsedMs={} nodes={}",
                     job.id, job.snapshot().status(), result.termination(),
@@ -155,10 +155,15 @@ public final class GenerationJobService implements AutoCloseable {
         private volatile String error;
         private volatile Instant startedAt;
         private volatile Instant completedAt;
+        private volatile int progressPercent;
 
         private Job(UUID id, GenerationRequest request) {
             this.id = id;
             this.request = request;
+        }
+
+        private void reportProgress(int percent) {
+            progressPercent = Math.max(progressPercent, Math.min(99, Math.max(0, percent)));
         }
 
         private void complete(GeneratedPuzzle result) {
@@ -187,7 +192,8 @@ public final class GenerationJobService implements AutoCloseable {
                     : Duration.between(startedAt, completedAt == null ? Instant.now() : completedAt).toMillis();
             String visibleStatus = cancellationRequested && completedAt == null ? "CANCELLING" : status;
             return new JobSnapshot(id, visibleStatus, termination == null ? null : termination.name(),
-                    error, elapsedMillis, result == null ? 0 : result.visitedNodes());
+                    error, elapsedMillis, result == null ? 0 : result.visitedNodes(),
+                    "GENERATED".equals(status) ? 100 : progressPercent);
         }
     }
 
@@ -197,6 +203,7 @@ public final class GenerationJobService implements AutoCloseable {
             String termination,
             String error,
             long elapsedMillis,
-            long visitedNodes) {
+            long visitedNodes,
+            int progressPercent) {
     }
 }

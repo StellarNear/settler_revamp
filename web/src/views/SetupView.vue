@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { useRouter } from "vue-router";
+import { computed } from "vue";
 import { useGameStore } from "../stores/game";
+import { useDataStore } from "../stores/data";
 const game = useGameStore();
 const router = useRouter();
+const data = useDataStore();
+// Saved defaults arrive after connecting; editing earlier would be silently overwritten.
+const choicesLocked = computed(
+  () => game.pending || (game.connected && !data.settings && !data.error),
+);
 async function generate() {
   if (await game.startPuzzle()) await router.push("/play");
 }
@@ -13,7 +20,7 @@ async function generate() {
     <h2 id="setup-title">New puzzle</h2>
     <label
       ><span>BOARD</span
-      ><select v-model="game.preset" :disabled="game.pending">
+      ><select v-model="game.preset" :disabled="choicesLocked">
         <option value="3x3">Supermini · 3 × 3</option>
         <option value="4x4">Mini · 4 × 4</option>
         <option value="5x5">Small · 5 × 5</option>
@@ -25,7 +32,7 @@ async function generate() {
     >
     <label
       ><span>MAX REGION</span
-      ><select v-model.number="game.maxRegionSize" :disabled="game.pending">
+      ><select v-model.number="game.maxRegionSize" :disabled="choicesLocked">
         <option v-for="size in [5, 6, 7, 8, 9]" :key="size" :value="size">
           {{ size }} cells
         </option>
@@ -33,7 +40,7 @@ async function generate() {
     >
     <label
       ><span>CLUE DENSITY</span
-      ><select v-model="game.difficulty" :disabled="game.pending">
+      ><select v-model="game.difficulty" :disabled="choicesLocked">
         <option value="EASY">Easy</option>
         <option value="MEDIUM">Medium</option>
         <option value="HARD">Hard</option>
@@ -44,7 +51,11 @@ async function generate() {
       :disabled="!game.connected || game.pending"
       @click="generate"
     >
-      {{ game.pending ? "WORKING..." : "GENERATE PUZZLE" }}
+      {{
+        game.pending
+          ? `WORKING... ${game.job?.progressPercent ?? 0}%`
+          : "GENERATE PUZZLE"
+      }}
     </button>
     <button
       v-if="game.job"

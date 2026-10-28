@@ -454,6 +454,15 @@ select {
     inset 0 3px 0 #fff9;
   overflow: hidden;
   isolation: isolate;
+  contain: layout paint;
+}
+.save-indicator {
+  visibility: hidden;
+  color: #176a62;
+  font-weight: 700;
+}
+.save-indicator.visible {
+  visibility: visible;
 }
 .board-row {
   position: relative;
@@ -595,12 +604,12 @@ select {
   font-weight: 600;
   line-height: 1;
   color: #24352f;
-  background: #faf7ef;
+  background: transparent;
   border-radius: 2px;
   pointer-events: none;
 }
-.manual-notes:not(:has(span:not(:empty))) {
-  background: transparent;
+.manual-notes:has(span:not(:empty)) {
+  background: #faf7ef;
 }
 .manual-notes span {
   display: grid;
@@ -669,7 +678,7 @@ select {
   stroke-width: 0.12;
 }
 :root[data-theme="high-contrast"] .cell-value,
-:root[data-theme="high-contrast"] .manual-notes {
+:root[data-theme="high-contrast"] .manual-notes:has(span:not(:empty)) {
   color: #000;
   background: #fff;
 }
@@ -776,6 +785,82 @@ select {
 :root[data-theme="high-contrast"] .viewport-guidance,
 :root[data-theme="high-contrast"] .atlas-caption {
   color: #fff;
+}
+:root[data-theme="dark"] .atlas-sheet {
+  color: #e6ecdf;
+  background:
+    radial-gradient(ellipse at 10% 0%, #425044 0, transparent 62%),
+    linear-gradient(145deg, #303a31, #252e27);
+  border-color: #687563;
+  box-shadow:
+    0 14px 34px #0008,
+    inset 0 1px 0 #ffffff20;
+}
+:root[data-theme="dark"] .atlas-sheet .viewport-controls button {
+  color: #e6ecdf;
+  background: #39453b;
+  border-color: #74816e;
+  box-shadow: 0 1px 2px #0005;
+}
+:root[data-theme="dark"]
+  .atlas-sheet
+  .viewport-controls
+  button:hover:not(:disabled) {
+  background: #495849;
+  border-color: #a7b49c;
+}
+:root[data-theme="dark"] .atlas-sheet .viewport-controls button:disabled {
+  color: #aab4a5;
+}
+:root[data-theme="dark"] .board {
+  color: #e8eee1;
+  background: #202a23;
+  box-shadow:
+    0 14px 28px #0007,
+    inset 0 0 0 2px #697764,
+    inset 0 3px 0 #ffffff20;
+}
+:root[data-theme="dark"] .cell {
+  color: #eef2e8;
+}
+:root[data-theme="dark"] .manual-notes:has(span:not(:empty)) {
+  color: #28362d;
+  background: #e3e5d9;
+}
+:root[data-theme="dark"] .cell-separators {
+  stroke: #24352e;
+  stroke-opacity: 0.4;
+}
+:root[data-theme="dark"] .region-boundaries {
+  stroke: #27382f;
+}
+.atlas-sheet.map-fullscreen:fullscreen {
+  box-sizing: border-box;
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 14px;
+  border-radius: 0;
+}
+.map-fullscreen .viewport-guidance,
+.map-fullscreen .atlas-legend,
+.map-fullscreen .atlas-caption {
+  display: none;
+}
+.map-fullscreen .board-viewport {
+  box-sizing: border-box;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  max-height: none;
+  justify-content: center;
+  align-items: center;
+}
+:root[data-theme="dark"] .atlas-sheet.map-fullscreen:fullscreen {
+  background: #202a23;
 }
 .play-inspector {
   min-width: 0;
@@ -903,35 +988,6 @@ select {
 .rules-dialog::backdrop {
   background: #0008;
 }
-.number-pad {
-  width: 100%;
-  margin-top: 17px;
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-.number-pad button {
-  width: 44px;
-  height: 44px;
-  color: var(--text-color);
-  background: var(--panel-background);
-  border: 1px solid var(--line-color);
-  border-radius: 2px;
-  cursor: pointer;
-  font-size: 18px;
-}
-.number-pad button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.number-pad .clear-button {
-  width: auto;
-  padding: 0 12px;
-  color: var(--text-color);
-  font-family: Consolas, monospace;
-  font-size: 12px;
-}
 .legend {
   width: min(100%, 560px);
   margin-top: 16px;
@@ -1036,20 +1092,8 @@ footer {
   .play-shell .intro {
     padding: 12px 0 0;
   }
-  .play-shell .number-pad {
-    position: sticky;
-    bottom: 0;
-    z-index: 4;
-    padding: 10px 0 max(10px, env(safe-area-inset-bottom));
-    background: var(--page-background);
-    border-block: 1px solid var(--line-color);
-    justify-content: flex-start;
-  }
   .play-inspector {
     display: contents;
-  }
-  .play-inspector > .number-pad {
-    grid-row: 2;
   }
   .play-inspector > h2 {
     margin-top: 8px;
@@ -1131,7 +1175,4 @@ select,
 }
 .connection {
   color: var(--muted-color);
-}
-.number-pad .clear-button {
-  min-width: 44px;
 }

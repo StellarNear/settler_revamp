@@ -25,16 +25,28 @@ const emit = defineEmits<{
 const id = useId().replace(/:/g, "");
 const viewport = ref<HTMLDivElement>();
 const board = ref<HTMLDivElement>();
+const sheet = ref<HTMLDivElement>();
 const size = ref(44);
 const fitted = ref(false);
 const available = ref(0);
-const geometry = computed(() =>
-  terrainGeometry(
-    props.attempt.columns,
-    props.attempt.rows,
-    props.attempt.regionIds,
-  ),
+const availableHeight = ref(0);
+const fullscreen = ref(false);
+const fullscreenError = ref("");
+let cachedGeometryKey = "";
+let cachedGeometry = terrainGeometry(
+  props.attempt.columns,
+  props.attempt.rows,
+  props.attempt.regionIds,
 );
+const geometry = computed(() => {
+  const { columns, rows, regionIds } = props.attempt;
+  const key = `${columns}x${rows}:${regionIds.join(",")}`;
+  if (key !== cachedGeometryKey) {
+    cachedGeometry = terrainGeometry(columns, rows, regionIds);
+    cachedGeometryKey = key;
+  }
+  return cachedGeometry;
+});
 const selectedRegion = computed(() =>
   props.selected === undefined
     ? undefined
@@ -45,10 +57,27 @@ const selectedBoundary = computed(
     geometry.value.regions.find((region) => region.id === selectedRegion.value)
       ?.boundary,
 );
+const selectedBiome = computed(
+  () =>
+    geometry.value.regions.find((region) => region.id === selectedRegion.value)
+      ?.biome,
+);
 const cellSize = computed(() =>
-  fitted.value
-    ? Math.min(44, Math.max(12, (available.value - 8) / props.attempt.columns))
-    : size.value,
+  fullscreen.value
+    ? Math.max(
+        12,
+        Math.min(
+          120,
+          (available.value - 24) / props.attempt.columns,
+          (availableHeight.value - 96) / props.attempt.rows,
+        ),
+      )
+    : fitted.value
+      ? Math.min(
+          44,
+          Math.max(12, (available.value - 8) / props.attempt.columns),
+        )
+      : size.value,
 );
 const rows = computed(() =>
   Array.from({ length: props.attempt.rows }, (_, row) =>
@@ -62,10 +91,19 @@ let observer: ResizeObserver | undefined;
 onMounted(() => {
   observer = new ResizeObserver((entries) => {
     available.value = entries[0].contentRect.width;
+    availableHeight.value = entries[0].contentRect.height;
   });
   if (viewport.value) observer.observe(viewport.value);
+  document.addEventListener("fullscreenchange", syncFullscreen);
 });
-onUnmounted(() => observer?.disconnect());
+onUnmounted(() => {
+  observer?.disconnect();
+  document.removeEventListener("fullscreenchange", syncFullscreen);
+});
+function syncFullscreen() {
+  fullscreen.value = document.fullscreenElement === sheet.value;
+  fullscreenError.value = "";
+}
 watch(
   () => props.attempt.attemptId,
   () => {
@@ -90,11 +128,21 @@ async function focus(index: number) {
   cell?.focus({ preventScroll: true });
   cell?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
-async function zoomSelection() {
-  fitted.value = false;
-  size.value = 44;
-  emit("focusCell", props.selected ?? 0);
-  await focus(props.selected ?? 0);
+async function toggleFullscreen() {
+  fullscreenError.value = "";
+  try {
+    if (fullscreen.value) {
+      await document.exitFullscreen();
+      return;
+    }
+    if (!sheet.value?.requestFullscreen)
+      throw new Error("Fullscreen is not supported by this browser.");
+    fitted.value = true;
+    await sheet.value.requestFullscreen();
+  } catch (error) {
+    fullscreenError.value =
+      error instanceof Error ? error.message : "Could not enter fullscreen.";
+  }
 }
 function zoom(delta: number) {
   fitted.value = false;
@@ -110,10 +158,14 @@ watch(
       await focus(index);
   },
 );
-defineExpose({ focus });
+defineExpose({ focus, selectedBiome });
 </script>
 <template>
-  <div class="atlas-sheet">
+  <div
+    ref="sheet"
+    class="atlas-sheet"
+    :class="{ 'map-fullscreen': fullscreen }"
+  >
     <div class="viewport-controls" aria-label="Board viewport controls">
       <button
         :disabled="!fitted && size <= 36"
@@ -132,12 +184,17 @@ defineExpose({ focus });
       <button :aria-pressed="fitted" @click="fitted = !fitted">
         {{ fitted ? "Readable size" : "Fit overview" }}
       </button>
-      <button @click="zoomSelection">Zoom to selection</button>
+      <button :aria-pressed="fullscreen" @click="toggleFullscreen">
+        {{ fullscreen ? "Exit fullscreen" : "Fullscreen map" }}
+      </button>
     </div>
+    <p v-if="fullscreenError" class="error" role="alert">
+      {{ fullscreenError }}
+    </p>
     <p class="viewport-guidance">
       {{
         fitted
-          ? "Overview: cells may be small. Zoom to selection for precise entry."
+          ? "Overview: cells may be small. Use the zoom controls for a closer view."
           : "Readable cells. Scroll the board in either direction; arrows move selection."
       }}
     </p>

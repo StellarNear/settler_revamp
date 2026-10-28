@@ -125,6 +125,7 @@ class LocalServerBootstrapIntegrationTest {
             job = json(send("GET", "/api/v1/generation-jobs/" + jobId, null, null));
         } while (!"GENERATED".equals(job.get("status")) && System.nanoTime() < deadline);
         assertEquals("GENERATED", job.get("status"));
+        assertEquals(100, job.get("progressPercent"));
 
         String editor = UUID.randomUUID().toString();
         HttpResponse<String> createResponse = send(

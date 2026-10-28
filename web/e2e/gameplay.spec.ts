@@ -121,9 +121,7 @@ test("notes, assistance, cycling, history, pause/reload and replay are Java-pers
   const cell = board.givens.indexOf(0);
   await page.locator(".cell").nth(cell).click();
   await page.getByLabel("Manual notes", { exact: false }).check();
-  await page
-    .getByRole("button", { name: "Toggle note 1", exact: true })
-    .click();
+  await page.locator(".cell").nth(cell).press("1");
   await expect(
     page.locator(".cell").nth(cell).locator(".manual-notes"),
   ).toHaveText("1");
@@ -247,7 +245,7 @@ for (const committed of [false, true]) {
   });
 }
 
-test("touch keypad completes a real Java puzzle", async ({
+test("touch taps cycle values to complete a real Java puzzle", async ({
   browser,
   request,
 }) => {
@@ -258,13 +256,14 @@ test("touch keypad completes a real Java puzzle", async ({
   });
   const page = await context.newPage();
   try {
-    const { board } = await openGame(page, request, 2, 1);
+    const { board } = await openGame(page, request, 2, 1, true);
     const cell = board.givens.indexOf(0);
     const answer = board.givens[1 - cell] === 1 ? 2 : 1;
-    await page.locator(".cell").nth(cell).tap();
-    await page
-      .getByRole("button", { name: `Enter ${answer}`, exact: true })
-      .tap();
+    const target = page.locator(".cell").nth(cell);
+    for (let tap = 0; tap < answer; tap++) {
+      await target.tap();
+      await expect(target.locator(".cell-value")).toHaveText(String(tap + 1));
+    }
     await expect(page.locator(".completion")).toContainText("Result saved");
   } finally {
     await context.close();

@@ -113,6 +113,13 @@ test("legacy preview/import/filter/edit/export/delete retains raw data and repor
   await expect(
     page.getByText("2 records imported.", { exact: false }),
   ).toBeVisible();
+  const playerFilter = page.locator(".history-filters select").first();
+  await playerFilter.selectOption("<old>");
+  await page
+    .getByRole("button", { name: "Apply filters", exact: true })
+    .click();
+  await expect(page.locator(".history-summary")).toContainText("1 results");
+  await playerFilter.selectOption("");
   await page.getByLabel("Board filter", { exact: true }).fill("P05-LEGACY");
   await page
     .getByRole("button", { name: "Apply filters", exact: true })

@@ -125,3 +125,6 @@ Thumbs.db
 /web/*.tsbuildinfo
 /web/test-results/
 /web/playwright-report/
+
+puzzle-engine/target/*
+

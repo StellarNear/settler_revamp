@@ -35,6 +35,7 @@ export const useGameStore = defineStore("game", () => {
   const connected = ref(false);
   const connecting = ref(false);
   const pending = ref(false);
+  const saving = ref(false);
   const cancelling = ref(false);
   const noteMode = ref(false);
   const cycleMode = ref(true);
@@ -48,6 +49,7 @@ export const useGameStore = defineStore("game", () => {
   let uncertain: { path: string; body: string } | undefined;
   let epoch = 0;
   let refreshing = false;
+  let heartbeatInFlight: Promise<void> | undefined;
   const ownsEditor = computed(
     () => attempt.value?.editorSessionId === editorSessionId,
   );
@@ -65,7 +67,6 @@ export const useGameStore = defineStore("game", () => {
     () =>
       connected.value &&
       ownsEditor.value &&
-      !pending.value &&
       !pauseRequested.value &&
       !outcomeUnknown.value &&
       ["READY", "PLAYING"].includes(attempt.value?.status ?? ""),
@@ -361,7 +362,7 @@ export const useGameStore = defineStore("game", () => {
       sessionStorage.setItem(attemptKey, created.attemptId);
       selectedCell.value = undefined;
       statusMessage.value =
-        "Puzzle saved. Select an open cell and enter a number.";
+        "Puzzle saved. Left-click a cell to increase, right-click to decrease.";
       return true;
     } catch (error) {
       report(error);
@@ -394,8 +395,26 @@ export const useGameStore = defineStore("game", () => {
   }
 
   async function command(type: CommandType, value?: number) {
-    const current = attempt.value;
     const cell = selectedCell.value;
+    if (type === "HEARTBEAT") {
+      if (heartbeatInFlight) return heartbeatInFlight;
+      const run = runCommand(type, value, cell);
+      heartbeatInFlight = run.finally(() => {
+        heartbeatInFlight = undefined;
+      });
+      return heartbeatInFlight;
+    }
+    // A background heartbeat must not swallow the player's click.
+    if (heartbeatInFlight) await heartbeatInFlight;
+    return runCommand(type, value, cell);
+  }
+
+  async function runCommand(
+    type: CommandType,
+    value: number | undefined,
+    cell: number | undefined,
+  ) {
+    const current = attempt.value;
     if (
       !connected.value ||
       pending.value ||
@@ -425,12 +444,18 @@ export const useGameStore = defineStore("game", () => {
     )
       return;
     pending.value = true;
-    stopClock();
+    const heartbeat = type === "HEARTBEAT";
+    if (!heartbeat) {
+      saving.value = true;
+      stopClock();
+    }
     const proposal =
       current.status === "PLAYING" && type !== "TAKEOVER"
         ? {
             timingSequence: ++timingSequence,
-            elapsedMillis: Math.floor(localElapsed),
+            elapsedMillis: heartbeat
+              ? Math.floor(elapsedMillis.value)
+              : Math.floor(localElapsed),
           }
         : {};
     ++epoch;
@@ -456,19 +481,28 @@ export const useGameStore = defineStore("game", () => {
           ...(value !== undefined ? { value } : {}),
         }),
       );
-      adopt(snapshot, true);
-      statusMessage.value =
-        snapshot.status === "COMPLETED"
-          ? "Puzzle complete. Your result has been saved."
-          : type === "TAKEOVER"
-            ? "This tab now controls the saved game."
-            : type === "PAUSE"
-              ? "Game paused. Closed and hidden time is not counted."
-              : type === "RESUME"
-                ? "Game resumed."
-                : type === "HEARTBEAT"
-                  ? "Active time saved."
+      if (heartbeat) {
+        if (attempt.value?.attemptId === snapshot.attemptId) {
+          current.progress.elapsedMillis = snapshot.progress.elapsedMillis;
+          current.progress.timingSequence = snapshot.progress.timingSequence;
+          timingSequence = Math.max(
+            timingSequence,
+            snapshot.progress.timingSequence,
+          );
+        }
+      } else {
+        adopt(snapshot, true);
+        statusMessage.value =
+          snapshot.status === "COMPLETED"
+            ? "Puzzle complete. Your result has been saved."
+            : type === "TAKEOVER"
+              ? "This tab now controls the saved game."
+              : type === "PAUSE"
+                ? "Game paused. Closed and hidden time is not counted."
+                : type === "RESUME"
+                  ? "Game resumed."
                   : "Move saved to the local server.";
+      }
     } catch (error) {
       report(error);
       if (error instanceof HttpError && error.status === 409) {
@@ -483,6 +517,7 @@ export const useGameStore = defineStore("game", () => {
       }
     } finally {
       pending.value = false;
+      saving.value = false;
       if (pauseRequested.value) {
         if (
           type !== "PAUSE" &&
@@ -597,6 +632,7 @@ export const useGameStore = defineStore("game", () => {
     connected,
     connecting,
     pending,
+    saving,
     cancelling,
     ownsEditor,
     maxEntry,

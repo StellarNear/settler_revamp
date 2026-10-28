@@ -31,6 +31,7 @@ const source = ref(""),
   restoreSettings = ref(false);
 const preview = ref<z.infer<typeof previewSchema>>();
 const tags = ref<Record<string, string>>({});
+const playerOptions = ref<string[]>([]);
 function scoringLabel(version: HistoryEntry["scoringVersion"]) {
   switch (version) {
     case "legacy-clicks-v1":
@@ -78,19 +79,47 @@ async function operation(action: () => Promise<void>, mutation = false) {
   }
 }
 async function fetchHistory() {
-  const query = new URLSearchParams({
+  const filters = {
     player: player.value,
     mapSize: mapSize.value,
     scoring: scoring.value,
     assistance: assistance.value,
     sort: sort.value,
+  };
+  const query = new URLSearchParams(filters);
+  const allPlayersQuery = new URLSearchParams({
+    player: "",
+    mapSize: "",
+    scoring: "",
+    assistance: "",
+    sort: "date-desc",
   });
-  history.value = await dataRequest(`/api/v1/history?${query}`, historySchema);
+  const filteredRequest = dataRequest(
+    `/api/v1/history?${query}`,
+    historySchema,
+  );
+  const allPlayersRequest =
+    player.value ||
+    mapSize.value ||
+    scoring.value ||
+    assistance.value ||
+    sort.value !== "date-desc"
+      ? dataRequest(`/api/v1/history?${allPlayersQuery}`, historySchema)
+      : filteredRequest;
+  const [filtered, allPlayers] = await Promise.all([
+    filteredRequest,
+    allPlayersRequest,
+  ]);
+  history.value = filtered;
+  playerOptions.value = [
+    ...new Set(
+      allPlayers.entries
+        .map((entry) => entry.playerTag?.trim() ?? "")
+        .filter(Boolean),
+    ),
+  ].sort((first, second) => first.localeCompare(second));
   tags.value = Object.fromEntries(
-    history.value.entries.map((entry) => [
-      entry.recordId,
-      entry.playerTag ?? "",
-    ]),
+    filtered.entries.map((entry) => [entry.recordId, entry.playerTag ?? ""]),
   );
 }
 function refresh() {
@@ -259,7 +288,14 @@ onMounted(() => void refresh());
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="message" role="status">{{ message }}</p>
     <form class="history-filters" @submit.prevent="refresh">
-      <label>Player filter<input v-model="player" maxlength="128" /></label>
+      <label
+        >Player filter<select v-model="player">
+          <option value="">All players</option>
+          <option v-for="name in playerOptions" :key="name" :value="name">
+            {{ name }}
+          </option>
+        </select></label
+      >
       <label
         >Board filter<input
           v-model="mapSize"

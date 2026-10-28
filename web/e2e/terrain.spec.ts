@@ -121,7 +121,7 @@ async function alignment(page: Page) {
   return result;
 }
 
-test("all seven presets retain readable cells at desktop and 390px, with aligned overview and precise selection", async ({
+test("all seven presets retain readable cells at desktop and 390px, with aligned overview", async ({
   page,
 }, testInfo) => {
   for (const width of [1440, 390]) {
@@ -147,51 +147,17 @@ test("all seven presets retain readable cells at desktop and 390px, with aligned
       expect(overview.scrolls).toBe(false);
       if (columns === 20) await page.locator(".cell").last().focus();
       await page
-        .getByRole("button", { name: "Zoom to selection", exact: true })
+        .getByRole("button", { name: "Readable size", exact: true })
         .click();
       expect((await alignment(page)).size).toBe(44);
-      await expect(
-        columns === 20
-          ? page.locator(".cell").last()
-          : page.locator(".cell").first(),
-      ).toBeFocused();
-      if (width === 390 && columns === 20) {
-        const visible = await page
-          .locator(".cell")
-          .last()
-          .evaluate((cell) => {
-            const viewport = document
-              .querySelector(".board-viewport")!
-              .getBoundingClientRect();
-            const bounds = cell.getBoundingClientRect();
-            return (
-              bounds.left >= viewport.left &&
-              bounds.right <= viewport.right &&
-              bounds.top >= viewport.top &&
-              bounds.bottom <= viewport.bottom
-            );
-          });
-        expect(visible).toBe(true);
-      }
       const targets = await page
-        .locator(".viewport-controls button, .number-pad button")
+        .locator(".viewport-controls button")
         .evaluateAll((buttons) =>
           buttons
             .map((button) => button.getBoundingClientRect())
             .every((rect) => rect.width >= 44 && rect.height >= 44),
         );
       expect(targets).toBe(true);
-      if (width === 390) {
-        const keypad = await page.locator(".number-pad").evaluate((element) => {
-          const box = element.getBoundingClientRect();
-          return {
-            position: getComputedStyle(element).position,
-            visible: box.top >= 0 && box.bottom <= innerHeight + 1,
-          };
-        });
-        expect(keypad.position).toBe("sticky");
-        expect(keypad.visible).toBe(true);
-      }
       await page.screenshot({
         path: testInfo.outputPath(`${width}-${columns}x${rows}.png`),
         fullPage: true,
@@ -289,7 +255,29 @@ test("fractional DPR/zoom preserve shared SVG and HTML geometry; 200% text does 
   });
   await alignment(page);
   await expect(
-    page.getByRole("button", { name: "Zoom to selection", exact: true }),
+    page.getByRole("button", { name: "Fullscreen map", exact: true }),
+  ).toBeVisible();
+});
+
+test("fullscreen expands the board for play and exits cleanly", async ({
+  page,
+}) => {
+  await show(page, 20, 12);
+  await page
+    .getByRole("button", { name: "Fullscreen map", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Exit fullscreen", exact: true }),
+  ).toBeVisible();
+  const viewportHeight = await page
+    .locator(".board-viewport")
+    .evaluate((element) => element.getBoundingClientRect().height);
+  expect(viewportHeight).toBeGreaterThan(500);
+  await page
+    .getByRole("button", { name: "Exit fullscreen", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Fullscreen map", exact: true }),
   ).toBeVisible();
 });
 
@@ -298,6 +286,16 @@ test("deterministic concave/hole terrain, notes 1–9, all themes and reduced de
 }, testInfo) => {
   for (const theme of ["light", "dark", "high-contrast"] as const) {
     await show(page, 9, 5, { ...settings, theme });
+    if (theme === "dark") {
+      await expect(page.locator(".board")).toHaveCSS(
+        "background-color",
+        "rgb(32, 42, 35)",
+      );
+      await expect(page.locator(".atlas-sheet")).toHaveCSS(
+        "color",
+        "rgb(230, 236, 223)",
+      );
+    }
     await expect(
       page.locator(".terrain-region[data-region='0'] path").first(),
     ).not.toHaveAttribute("d", /M1 1/);

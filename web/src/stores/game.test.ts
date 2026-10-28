@@ -72,6 +72,7 @@ describe("Java-authoritative snapshot store", () => {
       };
       fetchMock.mockResolvedValueOnce(Response.json(playing));
       await game.enterValue(1);
+      const beforeHeartbeat = game.attempt;
       now += 5_000;
       fetchMock.mockResolvedValueOnce(
         Response.json({
@@ -84,6 +85,8 @@ describe("Java-authoritative snapshot store", () => {
         }),
       );
       await game.heartbeat();
+      expect(game.attempt).toBe(beforeHeartbeat);
+      expect(game.elapsedMillis).toBe(5_000);
       expect(
         JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body)),
       ).toMatchObject({
@@ -129,6 +132,36 @@ describe("Java-authoritative snapshot store", () => {
     } finally {
       timer.mockRestore();
     }
+  });
+  it("keeps the board editable during a background heartbeat and sends a move made meanwhile", async () => {
+    const game = await connectedStore();
+    game.playVisible = true;
+    const playing = {
+      ...fixture,
+      status: "PLAYING",
+      revision: 1,
+      progress: { ...initialProgress, started: true },
+    };
+    fetchMock.mockResolvedValueOnce(Response.json(playing));
+    await game.enterValue(1);
+    const beat = deferred<Response>();
+    fetchMock.mockReturnValueOnce(beat.promise);
+    const heartbeat = game.heartbeat();
+    expect(game.saving).toBe(false);
+    expect(game.editable).toBe(true);
+    fetchMock.mockResolvedValueOnce(
+      Response.json({ ...playing, values: [1, 2], revision: 2, moveCount: 1 }),
+    );
+    const move = game.cycleValue(1);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    beat.resolve(Response.json(playing));
+    await Promise.all([heartbeat, move]);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(
+      JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body)),
+    ).toMatchObject({ type: "CYCLE_VALUE", cellIndex: 0, expectedRevision: 1 });
+    expect(game.attempt?.revision).toBe(2);
+    expect(game.saving).toBe(false);
   });
   it("stops a pending move then sends exactly one pause without queued board input", async () => {
     const game = await connectedStore();

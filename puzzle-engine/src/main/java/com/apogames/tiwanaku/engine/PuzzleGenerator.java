@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.SplittableRandom;
+import java.util.function.IntConsumer;
 
 public final class PuzzleGenerator {
     private static final long PARTITION_SEARCH_NODE_LIMIT = 20_000;
@@ -19,12 +20,18 @@ public final class PuzzleGenerator {
     }
 
     public GeneratedPuzzle generate(GenerationSpec spec) {
+        return generate(spec, percent -> { });
+    }
+
+    /** Same as {@link #generate(GenerationSpec)}, reporting a rough 0-100 progress for display only. */
+    public GeneratedPuzzle generate(GenerationSpec spec, IntConsumer progress) {
         long startedAt = System.nanoTime();
         long timeoutNanos = toNanosSaturated(spec.timeout());
         long visitedNodes = 0;
         SplittableRandom random = new SplittableRandom(spec.seed());
 
         for (int attempt = 1; attempt <= spec.maxPartitionAttempts(); attempt++) {
+            progress.accept(Math.min(9, attempt));
             if (cancelledOrExpired(spec, startedAt, timeoutNanos) || visitedNodes >= spec.maxSearchNodes()) {
                 return failed(spec, startedAt, timeoutNanos, attempt - 1, visitedNodes);
             }
@@ -56,7 +63,7 @@ public final class PuzzleGenerator {
                 continue;
             }
             ClueRemovalResult removal = removeClues(
-                    regionLayout, solution, spec, startedAt, timeoutNanos, random.split(), visitedNodes);
+                    regionLayout, solution, spec, startedAt, timeoutNanos, random.split(), visitedNodes, progress);
             visitedNodes = removal.visitedNodes();
             if (removal.termination() != null) {
                 return unknown(removal.termination(), attempt, visitedNodes, spec.seed());
@@ -83,7 +90,8 @@ public final class PuzzleGenerator {
             long startedAt,
             long timeoutNanos,
             SplittableRandom random,
-            long alreadyVisitedNodes) {
+            long alreadyVisitedNodes,
+            IntConsumer progress) {
         int[] givens = solution.clone();
         int targetClues = spec.difficulty().targetClues(solution.length);
         List<Integer> cells = new ArrayList<>(solution.length);
@@ -95,7 +103,11 @@ public final class PuzzleGenerator {
         }
 
         long visitedNodes = alreadyVisitedNodes;
+        int checked = 0;
+        int removable = Math.max(1, solution.length - targetClues);
         for (int cell : cells) {
+            int removed = solution.length - countClues(givens);
+            progress.accept(10 + 85 * Math.max(checked++ * removable / cells.size(), removed) / removable);
             if (countClues(givens) <= targetClues) {
                 break;
             }

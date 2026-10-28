@@ -5,6 +5,9 @@ export const biomes = [
   { name: "Water", color: "#aed4de", ink: "#39778a" },
 ] as const;
 
+let cachedAssignmentKey = "";
+let cachedAssignment = new Map<number, number>();
+
 export function assignRegionBiomes(
   columns: number,
   rows: number,
@@ -18,6 +21,8 @@ export function assignRegionBiomes(
     columns * rows !== regionIds.length
   )
     throw new Error("Terrain requires validated board dimensions.");
+  const assignmentKey = `${columns}x${rows}:${regionIds.join(",")}`;
+  if (assignmentKey === cachedAssignmentKey) return cachedAssignment;
 
   const adjacency = new Map<number, Set<number>>();
   const connect = (first: number, second: number) => {
@@ -91,6 +96,8 @@ export function assignRegionBiomes(
 
   if (!colorNextRegion())
     throw new Error("Region adjacency cannot be assigned distinct biomes.");
+  cachedAssignmentKey = assignmentKey;
+  cachedAssignment = assigned;
   return assigned;
 }
 

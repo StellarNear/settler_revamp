@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { onBeforeRouteLeave } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { useGameStore } from "../stores/game";
 import { useDataStore } from "../stores/data";
 import TerrainBoard from "../components/TerrainBoard.vue";
-import { assignRegionBiomes, biomes } from "../terrain";
+import { biomes } from "../terrain";
 const game = useGameStore();
 const data = useDataStore();
 const terrainBoard = ref<InstanceType<typeof TerrainBoard>>();
@@ -13,14 +13,8 @@ const selectedRegion = computed(
   () => game.attempt?.regionIds[game.selectedCell ?? -1],
 );
 const selectedBiome = computed(() => {
-  const attempt = game.attempt;
-  const region = selectedRegion.value;
-  if (!attempt || region === undefined) return undefined;
-  const biome = assignRegionBiomes(
-    attempt.columns,
-    attempt.rows,
-    attempt.regionIds,
-  ).get(region);
+  if (!terrainBoard.value) return undefined;
+  const biome = terrainBoard.value.selectedBiome;
   return biome === undefined ? undefined : biomes[biome];
 });
 const help = ref<HTMLDialogElement>();
@@ -30,6 +24,17 @@ const time = computed(() => {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 });
 const boardDisabled = computed(() => !game.editable);
+const slowSave = ref(false);
+let slowSaveTimer: number | undefined;
+watch(
+  () => game.saving,
+  (saving) => {
+    window.clearTimeout(slowSaveTimer);
+    if (saving)
+      slowSaveTimer = window.setTimeout(() => (slowSave.value = true), 400);
+    else slowSave.value = false;
+  },
+);
 
 function select(index: number, event: MouseEvent) {
   game.selectedCell = index;
@@ -142,6 +147,7 @@ onBeforeRouteLeave(async () => {
   await game.pause();
 });
 onUnmounted(() => {
+  window.clearTimeout(slowSaveTimer);
   void game.pause();
   document.removeEventListener("visibilitychange", visibility);
   window.removeEventListener("pagehide", pageHide);
@@ -158,37 +164,35 @@ onUnmounted(() => {
           {{ game.attempt.progress.replay ? " · REPLAY" : "" }}</span
         >
         <span
+          class="save-indicator"
+          :class="{ visible: slowSave }"
+          role="status"
+          :aria-hidden="!slowSave"
+          >Saving to Java…</span
+        >
+        <span
           >REV {{ game.attempt.revision }} ·
           {{ game.attempt.moveCount }} ENTRIES ·
           <time aria-label="Active elapsed time">{{ time }}</time></span
         >
       </div>
-      <p v-if="game.pending" role="status">
-        Saving to Java... additional input is not queued.
-      </p>
       <div class="play-toolbar">
         <RouterLink to="/setup">New puzzle</RouterLink>
         <button
-          :disabled="!game.connected || game.pending || game.outcomeUnknown"
+          :disabled="!game.connected || game.outcomeUnknown"
           @click="restart"
         >
           Restart this puzzle
         </button>
         <button
           v-if="game.connected && !game.ownsEditor"
-          :disabled="game.pending"
           @click="game.takeControl"
         >
           Take control of this game
         </button>
         <button
           v-if="game.attempt.status === 'SUSPENDED'"
-          :disabled="
-            !game.connected ||
-            !game.ownsEditor ||
-            game.pending ||
-            game.outcomeUnknown
-          "
+          :disabled="!game.connected || !game.ownsEditor || game.outcomeUnknown"
           @click="game.resume"
         >
           Resume game
@@ -283,33 +287,6 @@ onUnmounted(() => {
                 "
               />Continuous conflicts (assisted)</label
             >
-          </div>
-          <div class="number-pad" aria-label="Number entry">
-            <button
-              v-for="number in game.maxEntry"
-              :key="number"
-              :aria-label="`${game.noteMode ? 'Toggle note' : 'Enter'} ${number}`"
-              :disabled="
-                boardDisabled ||
-                game.selectedCell === undefined ||
-                game.attempt.givens[game.selectedCell] !== 0
-              "
-              @click="game.enterValue(number)"
-            >
-              {{ number }}
-            </button>
-            <button
-              class="clear-button"
-              aria-label="Clear selected cell"
-              :disabled="
-                boardDisabled ||
-                !game.selectedValue ||
-                game.attempt.givens[game.selectedCell ?? -1] !== 0
-              "
-              @click="game.command('SET_VALUE', 0)"
-            >
-              CLEAR
-            </button>
           </div>
           <div class="play-toolbar">
             <button
