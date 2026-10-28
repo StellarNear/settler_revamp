@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { loadBootstrap, request, tileShapeSchema } from "./api";
+import {
+  difficultySchema,
+  loadBootstrap,
+  request,
+  tileShapeSchema,
+} from "./api";
 
 const integer = z.number().int().safe().nonnegative();
 export const settingsSchema = z.strictObject({
@@ -9,7 +14,7 @@ export const settingsSchema = z.strictObject({
   showConflicts: z.boolean(),
   preset: z.enum(["3x3", "4x4", "5x5", "7x5", "9x5", "15x10", "20x12"]),
   maxRegionSize: integer.min(5).max(9),
-  difficulty: z.enum(["EASY", "MEDIUM", "HARD"]),
+  difficulty: difficultySchema,
   playerTag: z.string().regex(/^[A-Za-z]{0,3}$/),
   shape: tileShapeSchema,
 });
@@ -49,7 +54,7 @@ export const historyEntrySchema = z.strictObject({
       columns: integer.min(1).max(240),
       rows: integer.min(1).max(240),
       maxRegionSize: integer.min(5).max(9),
-      difficulty: z.enum(["EASY", "MEDIUM", "HARD"]),
+      difficulty: difficultySchema,
       seed: z.string().regex(/^-?[0-9]{1,19}$/),
       engineVersion: z.string().max(64),
       generatorVersion: z.string().max(64),

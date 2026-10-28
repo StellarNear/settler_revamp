@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { archiveSchema, historyEntrySchema, settingsSchema } from "./dataApi";
+import { difficulties } from "./api";
 
 describe("durable data contracts", () => {
   it("preserves unknown legacy fields rather than synthesizing entry accuracy or settings", () => {
@@ -43,6 +44,11 @@ describe("durable data contracts", () => {
       shape: "SQUARE",
     };
     expect(settingsSchema.parse(settings)).toEqual(settings);
+    for (const difficulty of difficulties) {
+      expect(settingsSchema.parse({ ...settings, difficulty }).difficulty).toBe(
+        difficulty,
+      );
+    }
     expect(
       settingsSchema.safeParse({ ...settings, playerTag: "123" }).success,
     ).toBe(false);

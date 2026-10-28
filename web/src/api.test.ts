@@ -3,6 +3,7 @@ import { initialProgress, bootstrapFixture } from "./testFixtures";
 import {
   attemptSchema,
   bootstrapSchema,
+  difficulties,
   ContractError,
   HttpError,
   readResponse,
@@ -37,6 +38,27 @@ export const fixture = {
 };
 
 describe("v1 HTTP contracts", () => {
+  it.each(difficulties)(
+    "accepts %s throughout generation and attempt metadata",
+    (difficulty) => {
+      expect(
+        generationSchema.parse({
+          columns: 5,
+          rows: 5,
+          maxRegionSize: 5,
+          difficulty,
+          seed: 7,
+          shape: "SQUARE",
+        }).difficulty,
+      ).toBe(difficulty);
+      expect(
+        attemptSchema.parse({
+          ...fixture,
+          puzzleSettings: { ...fixture.puzzleSettings, difficulty },
+        }).puzzleSettings?.difficulty,
+      ).toBe(difficulty);
+    },
+  );
   it("round trips command, generation, creation and completed-result records", () => {
     const command = {
       commandId: "command-1",

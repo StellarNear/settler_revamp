@@ -70,6 +70,10 @@ public final class PuzzleGenerator {
                 solution = initial.solutions().getFirst();
             }
             diversifyRegions(regionIds, solution, spec, random.split());
+            RegionMixer.Result mixing = RegionMixer.mix(regionIds, solution, spec, random.split(),
+                    spec.maxSearchNodes() - visitedNodes,
+                    () -> cancelledOrExpired(spec, startedAt, timeoutNanos), progress);
+            visitedNodes += mixing.visitedNodes();
             regionLayout = new PuzzleDefinition(
                     spec.shape(), spec.columns(), spec.rows(), regionIds, new int[spec.columns() * spec.rows()]);
             if (!BoardRules.isValidCompleteBoard(regionLayout, solution)) {
@@ -118,35 +122,62 @@ public final class PuzzleGenerator {
         long visitedNodes = alreadyVisitedNodes;
         int checked = 0;
         int removable = Math.max(1, solution.length - targetClues);
-        for (int cell : cells) {
-            int removed = solution.length - countClues(givens);
-            progress.accept(10 + 85 * Math.max(checked++ * removable / cells.size(), removed) / removable);
-            if (countClues(givens) <= targetClues) {
-                break;
+        boolean changed;
+        do {
+            changed = false;
+            for (int cell : cells) {
+                if (givens[cell] == 0) {
+                    continue;
+                }
+                int removed = solution.length - countClues(givens);
+                progress.accept(Math.min(95,
+                        10 + 85 * Math.max(checked++ * removable / cells.size(), removed) / removable));
+                if (countClues(givens) <= targetClues) {
+                    break;
+                }
+                if (cancelledOrExpired(spec, startedAt, timeoutNanos) || visitedNodes >= spec.maxSearchNodes()) {
+                    return new ClueRemovalResult(
+                            givens,
+                            terminationFor(spec, startedAt, timeoutNanos, visitedNodes),
+                            visitedNodes);
+                }
+                givens[cell] = 0;
+                PuzzleDefinition candidate = new PuzzleDefinition(
+                        regionLayout.shape(),
+                        regionLayout.columns(),
+                        regionLayout.rows(),
+                        regionLayout.regionIds(),
+                        givens);
+                SearchResult result = solve(candidate, spec, startedAt, timeoutNanos, spec.maxSearchNodes() - visitedNodes);
+                visitedNodes += result.visitedNodes();
+                if (result.status() == UniquenessStatus.PROVEN_UNIQUE) {
+                    if (spec.difficulty() == Difficulty.EXTREME) {
+                        long remainingNanos = timeoutNanos - (System.nanoTime() - startedAt);
+                        if (remainingNanos <= 0 || visitedNodes >= spec.maxSearchNodes()) {
+                            return new ClueRemovalResult(givens,
+                                    terminationFor(spec, startedAt, timeoutNanos, visitedNodes), visitedNodes);
+                        }
+                        LogicalSolver.Result logical = new LogicalSolver().solve(candidate, new SolverOptions(
+                                spec.maxSearchNodes() - visitedNodes, Duration.ofNanos(remainingNanos),
+                                spec.seed(), spec.cancellationToken()));
+                        visitedNodes += logical.visitedNodes();
+                        if (logical.status() == LogicalSolver.Status.UNKNOWN) {
+                            return new ClueRemovalResult(givens, logical.termination(), visitedNodes);
+                        }
+                        if (logical.status() != LogicalSolver.Status.SOLVED) {
+                            givens[cell] = solution[cell];
+                            continue;
+                        }
+                    }
+                    changed = true;
+                    continue;
+                }
+                givens[cell] = solution[cell];
+                if (result.status() == UniquenessStatus.UNKNOWN) {
+                    return new ClueRemovalResult(givens, result.termination(), visitedNodes);
+                }
             }
-            if (cancelledOrExpired(spec, startedAt, timeoutNanos) || visitedNodes >= spec.maxSearchNodes()) {
-                return new ClueRemovalResult(
-                        givens,
-                        terminationFor(spec, startedAt, timeoutNanos, visitedNodes),
-                        visitedNodes);
-            }
-            givens[cell] = 0;
-            PuzzleDefinition candidate = new PuzzleDefinition(
-                    regionLayout.shape(),
-                    regionLayout.columns(),
-                    regionLayout.rows(),
-                    regionLayout.regionIds(),
-                    givens);
-            SearchResult result = solve(candidate, spec, startedAt, timeoutNanos, spec.maxSearchNodes() - visitedNodes);
-            visitedNodes += result.visitedNodes();
-            if (result.status() == UniquenessStatus.PROVEN_UNIQUE) {
-                continue;
-            }
-            givens[cell] = solution[cell];
-            if (result.status() == UniquenessStatus.UNKNOWN) {
-                return new ClueRemovalResult(givens, result.termination(), visitedNodes);
-            }
-        }
+        } while (spec.difficulty().minimalClues() && changed);
         return new ClueRemovalResult(givens, null, visitedNodes);
     }
 

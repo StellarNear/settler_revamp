@@ -284,7 +284,7 @@ test("touch taps cycle values to complete a real Java puzzle", async ({
     await expect(page.locator(".completion")).toContainText("Result saved");
     const win = page.getByRole("dialog", { name: "Well played!" });
     await expect(win).toBeVisible();
-    await expect(win).toContainText("100%");
+    await expect(win).toContainText(`${Math.round(100 / answer)}%`);
     await expect(win).toContainText(String(answer));
     await win.getByLabel("Player for this result").selectOption("__new__");
     await win.getByLabel("New player tag").fill("tap");

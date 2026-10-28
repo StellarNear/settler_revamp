@@ -85,7 +85,7 @@ class PuzzleGeneratorTest {
         int[][] presets = {{3, 3}, {4, 4}, {5, 5}, {7, 5}, {9, 5}, {15, 10}, {20, 12}};
         for (int[] preset : presets) {
             for (int maxRegionSize = 5; maxRegionSize <= 9; maxRegionSize++) {
-                for (Difficulty difficulty : Difficulty.values()) {
+                for (Difficulty difficulty : new Difficulty[]{Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD}) {
                     for (long seed : new long[]{0, 2026, 3045}) {
                         GeneratedPuzzle result = new PuzzleGenerator().generate(new GenerationSpec(
                                 preset[0], preset[1], maxRegionSize, difficulty, seed,

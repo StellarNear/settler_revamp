@@ -146,6 +146,36 @@ class LocalServerBootstrapIntegrationTest {
                 """, token).statusCode());
     }
     @Test
+    void extremeAndGodlikeSurviveTheHttpContractAndSavedAttemptReload() throws Exception {
+        String token = bootstrapToken();
+        for (String difficulty : new String[]{"EXTREME", "GODLIKE"}) {
+            HttpResponse<String> submitted = send("POST", "/api/v1/generation-jobs",
+                    JSON.writeValueAsString(Map.of("columns", 4, "rows", 4, "maxRegionSize", 5,
+                            "difficulty", difficulty, "seed", 7)), token);
+            assertEquals(202, submitted.statusCode(), submitted.body());
+            String jobId = (String) json(submitted).get("jobId");
+            Map<?, ?> job;
+            long deadline = System.nanoTime() + Duration.ofSeconds(35).toNanos();
+            do {
+                Thread.sleep(25);
+                job = json(send("GET", "/api/v1/generation-jobs/" + jobId, null, null));
+            } while ("QUEUED".equals(job.get("status")) && System.nanoTime() < deadline);
+            assertEquals("GENERATED", job.get("status"), job.toString());
+            String editor = UUID.randomUUID().toString();
+            HttpResponse<String> created = send("POST", "/api/v1/attempts", JSON.writeValueAsString(Map.of(
+                    "requestId", UUID.randomUUID().toString(), "generationJobId", jobId,
+                    "editorSessionId", editor)), token);
+            assertEquals(200, created.statusCode(), created.body());
+            AttemptSnapshot attempt = JSON.readValue(created.body(), AttemptSnapshot.class);
+            assertEquals(difficulty, attempt.puzzleSettings().difficulty());
+            assertEquals("organic-minimal-v2", attempt.puzzleSettings().generatorVersion());
+            AttemptSnapshot reloaded = JSON.readValue(send("GET", "/api/v1/attempts/" + attempt.attemptId()
+                    + "?editorSessionId=" + editor, null, null).body(), AttemptSnapshot.class);
+            assertEquals(attempt.puzzleSettings(), reloaded.puzzleSettings());
+        }
+    }
+
+    @Test
     void generatesPersistsAndDeduplicatesACompletedAttempt() throws Exception {
         String token = bootstrapToken();
         Map<?, ?> jobResponse = json(send(

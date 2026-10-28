@@ -133,6 +133,27 @@ class HistoryServiceTest {
         assertEquals(2, history.history("", "", "", "", "date-desc").summary().count());
     }
 
+    @Test void minimalDifficultiesRoundTripThroughSettingsAndHistoryArchives() {
+        for (String difficulty : new String[]{"EXTREME", "GODLIKE"}) {
+            LocalSettings settings = new LocalSettings("en", "dark", false, false, "5x5",
+                    5, difficulty, "ABC", "SQUARE");
+            assertEquals(difficulty, history.saveSettings(history.settings().revision(), settings).settings().difficulty());
+            var puzzle = new HistoryEntry.PuzzleSettings(5, 5, 5, difficulty, "7",
+                    "exact-cover-v1", "organic-minimal-v2", "SQUARE");
+            var entry = new HistoryEntry(UUID.randomUUID().toString(), null, "5x5", null, 1000L,
+                    "ABC", "direct-entry-v1", 10, null, null, null,
+                    new HistoryEntry.Assistance(0, 0, 0, 0, false, false), puzzle);
+            String payload = json.write(new HistoryService.Payload(settings, java.util.List.of(entry)));
+            String archive = json.write(new HistoryService.Archive(1, StoreJson.checksum(payload), payload));
+            var preview = history.preview(archive, "logical");
+            assertEquals(puzzle, preview.entries().getFirst().puzzleSettings());
+            assertEquals(1, history.importSource(archive, "logical", preview.fingerprint(), true).imported());
+        }
+        assertEquals(2, history.history("", "", "", "", "date-desc").summary().count());
+        String exported = json.write(history.exportArchive());
+        assertEquals(2, history.preview(exported, "logical").entries().size());
+    }
+
     @Test void rejectsInconsistentScoringAndChangedRestorePolicyWithoutPartialWrites() {
         var invalid = new HistoryEntry(UUID.randomUUID().toString(), null, "SMALL", null, 1000L,
                 null, null, null, null, null, null, null, null);

@@ -8,7 +8,7 @@ public record LocalSettings(
         @NotNull Boolean reducedDetail, @NotNull Boolean showConflicts,
         @NotNull @Pattern(regexp="3x3|4x4|5x5|7x5|9x5|15x10|20x12") String preset,
         @Min(5) @Max(9) int maxRegionSize,
-        @NotNull @Pattern(regexp="EASY|MEDIUM|HARD") String difficulty,
+        @NotNull @Pattern(regexp="EASY|MEDIUM|HARD|EXTREME|GODLIKE") String difficulty,
         @NotNull @Pattern(regexp="[A-Za-z]{0,3}") String playerTag,
         @Pattern(regexp="SQUARE|HEXAGON|TRIANGLE|PENTAGON") String shape) {
     public LocalSettings normalized() {

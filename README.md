@@ -62,6 +62,35 @@ By default, game data and diagnostic logs are stored under
 Keep this directory intact when updating the application; do not delete it to
 troubleshoot a launch problem. Logs are written to its `logs` subdirectory.
 
+## Generation and difficulty
+
+Regions are connected through shared sides; equal numbers may not touch, including
+at corners. Random patch rebuilding changes region shapes without prescribing a
+width or height, while preserving a valid complete filling. This is constrained
+random generation, not a uniform draw from all mathematically possible maps.
+Every generated puzzle is separately proved to have exactly one solution.
+Existing saved puzzles are unchanged; seeds produce different layouts with the
+new `organic-minimal-v2` generator.
+
+- **Easy / Medium / Hard:** retain their existing clue-density targets. Uniqueness
+  is verified, but a bounded human-style solving path is not guaranteed.
+- **Extreme:** no density target. Each clue is tested for removal, preserving both
+  uniqueness and a verified solving path using cell singles, region hidden singles,
+  and contradiction checks with at most ten forced placements per hypothetical
+  value. Hypotheses never nest.
+- **Godlike:** no density target. Each clue is tested for removal while preserving
+  uniqueness. Solving may require arbitrarily long or nested hypotheses.
+
+For Extreme and Godlike, no remaining clue can be individually removed under the
+mode's rules. This is an irreducible clue set, not necessarily the globally
+smallest set, nor a guarantee that every puzzle demands the hardest allowed
+technique. Extreme and Godlike can sometimes produce the same puzzle.
+
+Generation automatically retries unsuccessful seeds, displaying elapsed time and
+the try number. Large boards have an approximately one-minute total search budget
+(smaller boards: 30 seconds). Cancellation and exhausted time/node budgets never
+certify a partial result; failure is reported rather than weakening the guarantees.
+
 ## Legacy application and hosted page
 
 The original libGDX desktop/Android/TeaVM source and Gradle wrapper are archived

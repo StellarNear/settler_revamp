@@ -3,7 +3,7 @@ import { useRouter } from "vue-router";
 import { computed } from "vue";
 import { useGameStore } from "../stores/game";
 import { useDataStore } from "../stores/data";
-import { tileShapes } from "../api";
+import { difficulties, tileShapes } from "../api";
 import { shapeLabels } from "../shapes";
 const game = useGameStore();
 const router = useRouter();
@@ -49,13 +49,30 @@ async function generate() {
       </select></label
     >
     <label
-      ><span>CLUE DENSITY</span
+      ><span>DIFFICULTY</span
       ><select v-model="game.difficulty" :disabled="choicesLocked">
-        <option value="EASY">Easy</option>
-        <option value="MEDIUM">Medium</option>
-        <option value="HARD">Hard</option>
+        <option
+          v-for="difficulty in difficulties"
+          :key="difficulty"
+          :value="difficulty"
+        >
+          {{ difficulty.charAt(0) + difficulty.slice(1).toLowerCase() }}
+        </option>
       </select></label
     >
+    <p v-if="game.difficulty === 'EXTREME'">
+      Minimal clues for singles and short contradiction checks: at most 10
+      forced placements per hypothesis, without nested guesses.
+    </p>
+    <p v-else-if="game.difficulty === 'GODLIKE'">
+      Minimal clues for a unique solution. Deep or nested hypotheses may be
+      needed.
+    </p>
+    <p v-if="game.difficulty === 'EXTREME' || game.difficulty === 'GODLIKE'">
+      No clue is individually removable under this mode's rules; this is not
+      necessarily the smallest possible clue set. Generation may retry for about
+      a minute on large boards.
+    </p>
     <button
       class="primary-button"
       :disabled="!game.connected || game.pending"

@@ -27,9 +27,8 @@ public final class GenerationJobService implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger(GenerationJobService.class);
     private static final int MAX_RETAINED_JOBS = 128;
     private static final Duration JOB_RETENTION = Duration.ofHours(1);
-    // Successful boards need at most ~300k nodes; a try beyond this is an unlucky seed, so move on to the next.
     private static final long NODES_PER_TRY = 600_000;
-    private static final int RETRY_TIME_FACTOR = 3;
+    private static final long MINIMAL_CLUE_NODES_PER_TRY = 4_000_000;
     private static final Duration MIN_RETRY_TIME = Duration.ofSeconds(2);
 
     private final PuzzleGenerator generator = new PuzzleGenerator();
@@ -64,8 +63,8 @@ public final class GenerationJobService implements AutoCloseable {
                     request.difficulty(),
                     request.seed(),
                     200,
-                    NODES_PER_TRY,
-                    Duration.ofSeconds(request.columns() * request.rows() > 45 ? 30 : 10),
+                    request.difficulty().minimalClues() ? MINIMAL_CLUE_NODES_PER_TRY : NODES_PER_TRY,
+                    Duration.ofSeconds(request.columns() * request.rows() > 45 ? 20 : 10),
                     job.cancellationToken);
         } catch (IllegalArgumentException exception) {
             throw ApiException.badRequest(exception.getMessage());
@@ -114,7 +113,7 @@ public final class GenerationJobService implements AutoCloseable {
         result(id);
         var request = jobs.get(id).request;
         return new HistoryEntry.PuzzleSettings(request.columns(), request.rows(), request.maxRegionSize(),
-                request.difficulty().name(), Long.toString(jobs.get(id).seed), "exact-cover-v1", "localhost-generator-v1",
+                request.difficulty().name(), Long.toString(jobs.get(id).seed), "exact-cover-v1", "organic-minimal-v2",
                 shapeOf(request).name());
     }
 
@@ -126,7 +125,7 @@ public final class GenerationJobService implements AutoCloseable {
         job.startedAt = Instant.now();
         try {
             // Unlucky seeds can exhaust the search budget; retry with derived seeds until the overall deadline.
-            Instant deadline = job.startedAt.plus(spec.timeout().multipliedBy(RETRY_TIME_FACTOR));
+            Instant deadline = job.startedAt.plusSeconds(spec.columns() * spec.rows() > 45 ? 60 : 30);
             GeneratedPuzzle result;
             while (true) {
                 result = generator.generate(spec, job::reportProgress);

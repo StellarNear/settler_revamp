@@ -1,4 +1,7 @@
 com\apogames\tiwanaku\engine\TopologyTest$1.class
-com\apogames\tiwanaku\engine\EngineSolverTest.class
 com\apogames\tiwanaku\engine\TopologyTest.class
 com\apogames\tiwanaku\engine\PuzzleGeneratorTest.class
+com\apogames\tiwanaku\engine\RegionMixerTest.class
+com\apogames\tiwanaku\engine\LogicalSolverTest.class
+com\apogames\tiwanaku\engine\MinimalDifficultyTest.class
+com\apogames\tiwanaku\engine\EngineSolverTest.class

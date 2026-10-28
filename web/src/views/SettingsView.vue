@@ -3,7 +3,7 @@ import { onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useDataStore } from "../stores/data";
 import type { LocalSettings } from "../dataApi";
-import { tileShapes } from "../api";
+import { difficulties, tileShapes } from "../api";
 import { shapeLabels } from "../shapes";
 const { t } = useI18n();
 const data = useDataStore();
@@ -76,10 +76,10 @@ onMounted(() => void data.load());
         </select></label
       >
       <label
-        >Default clue density<select v-model="draft.difficulty">
-          <option>EASY</option>
-          <option>MEDIUM</option>
-          <option>HARD</option>
+        >Default difficulty<select v-model="draft.difficulty">
+          <option v-for="difficulty in difficulties" :key="difficulty">
+            {{ difficulty }}
+          </option>
         </select></label
       >
       <label

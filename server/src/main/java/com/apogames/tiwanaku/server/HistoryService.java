@@ -249,7 +249,8 @@ public final class HistoryService {
             var puzzle = entry.puzzleSettings();
             if (puzzle != null && (puzzle.columns() < 1 || puzzle.rows() < 1 || (long) puzzle.columns() * puzzle.rows() > 240
                     || puzzle.maxRegionSize() < 5 || puzzle.maxRegionSize() > 9
-                    || puzzle.difficulty() == null || !List.of("EASY","MEDIUM","HARD").contains(puzzle.difficulty())
+                    || puzzle.difficulty() == null
+                    || !List.of("EASY","MEDIUM","HARD","EXTREME","GODLIKE").contains(puzzle.difficulty())
                     || puzzle.seed() == null || !puzzle.seed().matches("-?[0-9]{1,19}")
                     || puzzle.engineVersion() == null || puzzle.engineVersion().length() > 64
                     || puzzle.generatorVersion() == null || puzzle.generatorVersion().length() > 64

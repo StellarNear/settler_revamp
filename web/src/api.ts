@@ -1,6 +1,14 @@
 import { z } from "zod";
 
 const integer = z.number().int().safe().nonnegative();
+export const difficulties = [
+  "EASY",
+  "MEDIUM",
+  "HARD",
+  "EXTREME",
+  "GODLIKE",
+] as const;
+export const difficultySchema = z.enum(difficulties);
 export const tileShapes = [
   "SQUARE",
   "HEXAGON",
@@ -89,7 +97,7 @@ export const attemptSchema = z
     puzzleSettings: z
       .object({
         maxRegionSize: integer.min(1).max(9),
-        difficulty: z.enum(["EASY", "MEDIUM", "HARD"]),
+        difficulty: difficultySchema,
         shape: tileShapeSchema,
       })
       .nullable()
@@ -224,7 +232,7 @@ export const generationSchema = z
     columns: integer.min(1).max(240),
     rows: integer.min(1).max(240),
     maxRegionSize: integer.min(5).max(9),
-    difficulty: z.enum(["EASY", "MEDIUM", "HARD"]),
+    difficulty: difficultySchema,
     seed: z.number().int().safe(),
     shape: z.enum(tileShapes),
   })
