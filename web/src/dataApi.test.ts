@@ -40,6 +40,7 @@ describe("durable data contracts", () => {
       maxRegionSize: 5,
       difficulty: "EASY",
       playerTag: "",
+      shape: "SQUARE",
     };
     expect(settingsSchema.parse(settings)).toEqual(settings);
     expect(

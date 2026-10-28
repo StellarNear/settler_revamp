@@ -3,10 +3,13 @@ com\apogames\tiwanaku\engine\GenerationSpec.class
 com\apogames\tiwanaku\engine\ExactCoverSolver$Matrix.class
 com\apogames\tiwanaku\engine\ExactCoverSolver.class
 com\apogames\tiwanaku\engine\SolverOptions.class
+com\apogames\tiwanaku\engine\Topology$1.class
 com\apogames\tiwanaku\engine\GeneratedPuzzle.class
 com\apogames\tiwanaku\engine\AttemptState.class
+com\apogames\tiwanaku\engine\Topology.class
 com\apogames\tiwanaku\engine\UniquenessStatus.class
 com\apogames\tiwanaku\engine\GenerationStatus.class
+com\apogames\tiwanaku\engine\TileShape.class
 com\apogames\tiwanaku\engine\CancellationToken.class
 com\apogames\tiwanaku\engine\PuzzleGenerator.class
 com\apogames\tiwanaku\engine\PuzzleDefinition.class

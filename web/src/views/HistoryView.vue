@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { z } from "zod";
 import {
   archiveSchema,
+  assignPlayer,
   dataRequest,
   download,
   historySchema,
   outcomeSchema,
+  playersFrom,
   previewSchema,
   sourceSchema,
   type HistoryEntry,
@@ -15,6 +17,9 @@ import {
 import { loadBootstrap, HttpError } from "../api";
 import { useDataStore } from "../stores/data";
 import { formatElapsed } from "../historyPresentation";
+import PlayerPicker from "../components/PlayerPicker.vue";
+import { shapeLabels } from "../shapes";
+import { tileShapes } from "../api";
 const { t } = useI18n();
 const settings = useDataStore();
 const history = ref<z.infer<typeof historySchema>>();
@@ -23,38 +28,38 @@ const busy = ref(false),
   message = ref("");
 const player = ref(""),
   mapSize = ref(""),
-  scoring = ref(""),
-  assistance = ref(""),
+  shape = ref(""),
   sort = ref("date-desc");
 const source = ref(""),
   format = ref("legacy"),
   restoreSettings = ref(false);
 const preview = ref<z.infer<typeof previewSchema>>();
-const tags = ref<Record<string, string>>({});
 const playerOptions = ref<string[]>([]);
-function scoringLabel(version: HistoryEntry["scoringVersion"]) {
-  switch (version) {
-    case "legacy-clicks-v1":
-      return "Legacy clicks";
-    case "direct-entry-v1":
-      return "Direct entry";
-    case "unrecorded-v0":
-      return "Unrecorded";
-  }
+const pickerPlayers = ref<string[]>([]);
+const knownSizes = ref<string[]>([]);
+const editing = ref<string>();
+const presetSizes = [
+  ["3x3", "Tiny · 3 × 3"],
+  ["4x4", "Small · 4 × 4"],
+  ["5x5", "Compact · 5 × 5"],
+  ["7x5", "Medium · 7 × 5"],
+  ["9x5", "Large · 9 × 5"],
+  ["15x10", "Huge · 15 × 10"],
+  ["20x12", "Titan · 20 × 12"],
+] as const;
+const sizeOptions = computed(() => [
+  ...presetSizes.map(([value, label]) => ({ value, label })),
+  ...knownSizes.value
+    .filter((size) => !presetSizes.some(([value]) => value === size))
+    .map((size) => ({ value: size, label: size })),
+]);
+function accuracy(entry: HistoryEntry) {
+  return entry.legacyAccuracy === null ? "—" : `${entry.legacyAccuracy}%`;
 }
-function assistanceLabel(entry: HistoryEntry) {
-  const assistance = entry.assistance;
-  if (!assistance) return "Unknown";
-  const used: string[] = [];
-  if (assistance.candidates)
-    used.push(`${assistance.candidates} candidate checks`);
-  if (assistance.explanations)
-    used.push(`${assistance.explanations} explanations`);
-  if (assistance.reveals) used.push(`${assistance.reveals} reveals`);
-  if (assistance.continuousConflicts) used.push("conflicts");
-  if (assistance.replay) used.push("replay");
-  return used.length ? used.join(" · ") : "No hints or reveals";
+function boardLabel(size: string) {
+  return presetSizes.find(([value]) => value === size)?.[1] ?? size;
 }
+watch([player, mapSize, shape, sort], () => void refresh());
 watch([source, format], () => {
   preview.value = undefined;
 });
@@ -82,9 +87,10 @@ async function fetchHistory() {
   const filters = {
     player: player.value,
     mapSize: mapSize.value,
-    scoring: scoring.value,
-    assistance: assistance.value,
+    scoring: "",
+    assistance: "",
     sort: sort.value,
+    shape: shape.value,
   };
   const query = new URLSearchParams(filters);
   const allPlayersQuery = new URLSearchParams({
@@ -99,11 +105,7 @@ async function fetchHistory() {
     historySchema,
   );
   const allPlayersRequest =
-    player.value ||
-    mapSize.value ||
-    scoring.value ||
-    assistance.value ||
-    sort.value !== "date-desc"
+    player.value || mapSize.value || shape.value || sort.value !== "date-desc"
       ? dataRequest(`/api/v1/history?${allPlayersQuery}`, historySchema)
       : filteredRequest;
   const [filtered, allPlayers] = await Promise.all([
@@ -118,25 +120,31 @@ async function fetchHistory() {
         .filter(Boolean),
     ),
   ].sort((first, second) => first.localeCompare(second));
-  tags.value = Object.fromEntries(
-    filtered.entries.map((entry) => [entry.recordId, entry.playerTag ?? ""]),
-  );
+  pickerPlayers.value = playersFrom(allPlayers.entries, [
+    settings.settings?.playerTag ?? "",
+  ]);
+  knownSizes.value = [
+    ...new Set(allPlayers.entries.map((entry) => entry.mapSize)),
+  ].sort();
 }
-function refresh() {
-  return operation(fetchHistory);
+let refreshAgain = false;
+async function refresh(): Promise<void> {
+  if (busy.value) {
+    refreshAgain = true;
+    return;
+  }
+  await operation(fetchHistory);
+  if (refreshAgain) {
+    refreshAgain = false;
+    return refresh();
+  }
 }
-function rename(entry: HistoryEntry) {
+function assign(entry: HistoryEntry, tag: string) {
+  editing.value = undefined;
   return operation(async () => {
-    await dataRequest(
-      `/api/v1/history/${entry.recordId}/player`,
-      historySchema,
-      {
-        method: "POST",
-        body: JSON.stringify({ playerTag: tags.value[entry.recordId] }),
-      },
-    );
+    await assignPlayer(entry.recordId, tag);
     await fetchHistory();
-    message.value = "Player tag saved.";
+    message.value = tag ? `Result assigned to ${tag}.` : "Player removed.";
   }, true);
 }
 function remove(entry: HistoryEntry) {
@@ -289,7 +297,7 @@ onMounted(() => void refresh());
     <p v-if="message" role="status">{{ message }}</p>
     <form class="history-filters" @submit.prevent="refresh">
       <label
-        >Player filter<select v-model="player">
+        >Player filter<select v-model="player" aria-label="Player filter">
           <option value="">All players</option>
           <option v-for="name in playerOptions" :key="name" :value="name">
             {{ name }}
@@ -297,58 +305,50 @@ onMounted(() => void refresh());
         </select></label
       >
       <label
-        >Board filter<input
-          v-model="mapSize"
-          maxlength="64"
-          placeholder="e.g. 7x5 or SMALL"
-      /></label>
-      <label
-        >Scoring filter<select v-model="scoring">
-          <option value="">All methods</option>
-          <option value="direct-entry-v1">Direct entries</option>
-          <option value="legacy-clicks-v1">Legacy clicks</option>
-          <option value="unrecorded-v0">Unrecorded</option>
+        >Board filter<select v-model="mapSize" aria-label="Board filter">
+          <option value="">All boards</option>
+          <option
+            v-for="size in sizeOptions"
+            :key="size.value"
+            :value="size.value"
+          >
+            {{ size.label }}
+          </option>
         </select></label
       >
       <label
-        >Assistance filter<select v-model="assistance">
-          <option value="">All assistance</option>
-          <option value="assisted">Assisted</option>
-          <option value="unassisted">Unassisted</option>
-          <option value="unknown">Unknown</option>
-          <option value="replay">Replay</option>
+        >Tiles filter<select v-model="shape" aria-label="Tiles filter">
+          <option value="">All tiles</option>
+          <option v-for="tile in tileShapes" :key="tile" :value="tile">
+            {{ shapeLabels[tile] }}
+          </option>
         </select></label
       >
       <label
-        >Sort<select v-model="sort">
+        >Sort<select v-model="sort" aria-label="Sort">
           <option value="date-desc">Newest</option>
           <option value="date-asc">Oldest</option>
           <option value="time-asc">Fastest</option>
           <option value="time-desc">Slowest</option>
         </select></label
       >
-      <button :disabled="busy">Apply filters</button>
     </form>
     <div v-if="history" class="history-summary" aria-label="History summary">
-      <strong>{{ history.summary.count }} results</strong>
-      <span
-        >Total time: {{ formatElapsed(history.summary.elapsedSum) }} across
-        {{ history.summary.knownElapsedCount }} timed records</span
-      >
-      <span
-        >Mean legacy accuracy:
-        {{
+      <div>
+        <span>Games</span><strong>{{ history.summary.count }} results</strong>
+      </div>
+      <div>
+        <span>Total time</span
+        ><strong>{{ formatElapsed(history.summary.elapsedSum) }}</strong>
+      </div>
+      <div>
+        <span>Mean accuracy</span
+        ><strong>{{
           history.summary.legacyAccuracyMean === null
-            ? "Unknown"
-            : `${history.summary.legacyAccuracyMean.toFixed(2)}%`
-        }}
-        across {{ history.summary.legacyAccuracyCount }} compatible
-        records</span
-      >
-      <small
-        >Legacy accuracy excludes newer entry-count scoring; the two are not
-        averaged together.</small
-      >
+            ? "—"
+            : `${history.summary.legacyAccuracyMean.toFixed(1)}%`
+        }}</strong>
+      </div>
     </div>
     <p v-if="history && !history.entries.length">
       No history matches these filters.
@@ -356,15 +356,20 @@ onMounted(() => void refresh());
     <div v-if="history?.entries.length" class="history-table-wrap">
       <table class="history-table">
         <caption>
-          Saved completion history; unavailable metadata is shown as unknown.
+          Completed games. Click a player to reassign the result.
         </caption>
         <thead>
           <tr>
-            <th>Board &amp; date</th>
-            <th>Time &amp; score</th>
-            <th>Method</th>
-            <th>Assistance</th>
-            <th>Player &amp; actions</th>
+            <th>Player</th>
+            <th>Board</th>
+            <th>Tiles</th>
+            <th>Difficulty</th>
+            <th class="num">Max region</th>
+            <th class="num">Time</th>
+            <th class="num">Accuracy</th>
+            <th class="num">Clicks / misses</th>
+            <th>Date</th>
+            <th><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -373,50 +378,67 @@ onMounted(() => void refresh());
             :key="entry.recordId"
             :data-record-id="entry.recordId"
           >
-            <td class="history-board">
-              <strong>{{ entry.mapSize }}</strong>
-              <span>{{
-                entry.completedMillis === null
-                  ? "Date unknown"
-                  : new Date(entry.completedMillis).toLocaleString()
-              }}</span>
-              <small v-if="entry.puzzleSettings">
-                {{ entry.puzzleSettings.difficulty }} · max region
-                {{ entry.puzzleSettings.maxRegionSize }}
-              </small>
-              <small v-else>Puzzle settings unknown</small>
-            </td>
-            <td class="history-result">
-              <strong>{{ formatElapsed(entry.elapsedMillis) }}</strong>
-              <span>{{
-                entry.legacyAccuracy === null
-                  ? `${entry.valueEntries ?? "Unknown"} entries`
-                  : `${entry.legacyAccuracy}% legacy accuracy`
-              }}</span>
-              <small v-if="entry.totalClicks !== null">
-                {{ entry.totalClicks }} clicks ·
-                {{ entry.totalMissClicks }} misses
-              </small>
-            </td>
-            <td>{{ scoringLabel(entry.scoringVersion) }}</td>
-            <td>{{ assistanceLabel(entry) }}</td>
             <td class="history-player">
-              <span class="saved-player">{{
-                entry.playerTag || "Anonymous"
-              }}</span>
-              <div class="history-actions">
-                <form @submit.prevent="rename(entry)">
-                  <label
-                    >New player tag<input
-                      v-model="tags[entry.recordId]"
-                      maxlength="128"
-                      pattern="[A-Za-z]{0,3}" /></label
-                  ><button :disabled="busy">Save player tag</button>
-                </form>
-                <button :disabled="busy" @click="remove(entry)">
-                  Delete history entry
-                </button>
-              </div>
+              <PlayerPicker
+                v-if="editing === entry.recordId"
+                :current="entry.playerTag ?? ''"
+                :players="pickerPlayers"
+                :disabled="busy"
+                label="Player for this result"
+                @pick="assign(entry, $event)"
+              />
+              <button
+                v-else
+                class="saved-player"
+                :class="{ unknown: !entry.playerTag }"
+                title="Change player"
+                :disabled="busy"
+                @click="editing = entry.recordId"
+              >
+                {{ entry.playerTag || "N/A" }}
+              </button>
+            </td>
+            <td>
+              <strong>{{ boardLabel(entry.mapSize) }}</strong>
+            </td>
+            <td>
+              {{ shapeLabels[entry.puzzleSettings?.shape ?? "SQUARE"] }}
+            </td>
+            <td>{{ entry.puzzleSettings?.difficulty ?? "—" }}</td>
+            <td class="num">
+              {{ entry.puzzleSettings?.maxRegionSize ?? "—" }}
+            </td>
+            <td class="num">
+              <strong>{{ formatElapsed(entry.elapsedMillis) }}</strong>
+            </td>
+            <td class="num">{{ accuracy(entry) }}</td>
+            <td class="num">
+              {{
+                entry.totalClicks === null
+                  ? "—"
+                  : `${entry.totalClicks} / ${entry.totalMissClicks}`
+              }}
+            </td>
+            <td class="history-date">
+              {{
+                entry.completedMillis === null
+                  ? "—"
+                  : new Date(entry.completedMillis).toLocaleString([], {
+                      dateStyle: "short",
+                      timeStyle: "short",
+                    })
+              }}
+            </td>
+            <td>
+              <button
+                class="icon-button"
+                :disabled="busy"
+                aria-label="Delete history entry"
+                title="Delete history entry"
+                @click="remove(entry)"
+              >
+                ✕
+              </button>
             </td>
           </tr>
         </tbody>

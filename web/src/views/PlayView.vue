@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { onBeforeRouteLeave } from "vue-router";
+import { onBeforeRouteLeave, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { useGameStore } from "../stores/game";
 import { useDataStore } from "../stores/data";
 import TerrainBoard from "../components/TerrainBoard.vue";
+import PlayerPicker from "../components/PlayerPicker.vue";
 import { biomes } from "../terrain";
+import { shapeLabels } from "../shapes";
+import { assignPlayer, loadPlayers } from "../dataApi";
 const game = useGameStore();
 const data = useDataStore();
+const router = useRouter();
 const terrainBoard = ref<InstanceType<typeof TerrainBoard>>();
 const selectedRegion = computed(
   () => game.attempt?.regionIds[game.selectedCell ?? -1],
@@ -23,6 +27,71 @@ const time = computed(() => {
   const seconds = Math.floor(game.elapsedMillis / 1_000);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 });
+const presetNames: Record<string, string> = {
+  "3x3": "Tiny",
+  "4x4": "Small",
+  "5x5": "Compact",
+  "7x5": "Medium",
+  "9x5": "Large",
+  "15x10": "Huge",
+  "20x12": "Titan",
+};
+const boardName = computed(() => {
+  const current = game.attempt;
+  if (!current) return "";
+  const name = presetNames[`${current.columns}x${current.rows}`];
+  const tiles = shapeLabels[current.puzzleSettings?.shape ?? "SQUARE"];
+  return `${name ? `${name} · ` : ""}${current.columns} × ${current.rows} · ${tiles}`;
+});
+const win = ref<HTMLDialogElement>();
+const winPlayer = ref("");
+const winPlayers = ref<string[]>([]);
+const winMessage = ref("");
+const winBusy = ref(false);
+watch(
+  () => [game.attempt?.attemptId, game.attempt?.status] as const,
+  async ([id, status], previous) => {
+    if (
+      status !== "COMPLETED" ||
+      !previous ||
+      previous[0] !== id ||
+      previous[1] === "COMPLETED"
+    )
+      return;
+    winPlayer.value = data.settings?.playerTag ?? "";
+    winMessage.value = "";
+    if (!win.value?.open) win.value?.showModal();
+    try {
+      winPlayers.value = await loadPlayers([winPlayer.value]);
+    } catch {
+      winPlayers.value = winPlayer.value ? [winPlayer.value] : [];
+    }
+  },
+);
+async function pickWinner(tag: string) {
+  const attemptId = game.attempt?.attemptId;
+  if (!attemptId || winBusy.value) return;
+  winBusy.value = true;
+  winMessage.value = "";
+  try {
+    await assignPlayer(attemptId, tag);
+    winPlayer.value = tag;
+    if (tag && !winPlayers.value.includes(tag))
+      winPlayers.value = [...winPlayers.value, tag].sort();
+    if (data.settings && data.settings.playerTag !== tag)
+      await data.save({ ...data.settings, playerTag: tag });
+    winMessage.value = tag ? `Result saved for ${tag}.` : "Player cleared.";
+  } catch (reason) {
+    winMessage.value =
+      reason instanceof Error ? reason.message : "Could not save the player.";
+  } finally {
+    winBusy.value = false;
+  }
+}
+function newPuzzle() {
+  win.value?.close();
+  void router.push("/setup");
+}
 const boardDisabled = computed(() => !game.editable);
 const slowSave = ref(false);
 let slowSaveTimer: number | undefined;
@@ -109,7 +178,7 @@ function checkpoint() {
 function restore() {
   if (
     window.confirm(
-      "Restore checkpoint values and notes? Time and assistance will not be reset. You can undo this restore.",
+      "Restore checkpoint values and notes? Time will not be reset. You can undo this restore.",
     )
   ) {
     void game.command("RESTORE_CHECKPOINT");
@@ -122,15 +191,6 @@ function restart() {
     )
   )
     void game.restart();
-}
-function reveal() {
-  if (
-    window.confirm(
-      "Reveal this cell's answer? This assistance will be recorded permanently for this attempt.",
-    )
-  ) {
-    void game.command("REVEAL");
-  }
 }
 function visibility() {
   if (document.hidden) void game.pause();
@@ -159,7 +219,7 @@ onUnmounted(() => {
     <template v-if="game.attempt">
       <div class="board-meta">
         <span
-          >{{ game.attempt.columns }} × {{ game.attempt.rows }} ·
+          >{{ boardName }} ·
           {{ game.attempt.status }}
           {{ game.attempt.progress.replay ? " · REPLAY" : "" }}</span
         >
@@ -172,8 +232,7 @@ onUnmounted(() => {
         >
         <span
           >REV {{ game.attempt.revision }} ·
-          {{ game.attempt.moveCount }} ENTRIES ·
-          <time aria-label="Active elapsed time">{{ time }}</time></span
+          {{ game.attempt.moveCount }} ENTRIES</span
         >
       </div>
       <div class="play-toolbar">
@@ -222,7 +281,35 @@ onUnmounted(() => {
           @select="select"
           @secondary="secondary"
           @focus-cell="game.selectedCell = $event"
-        />
+        >
+          <template #hud>
+            <dl class="hud" aria-label="Game information">
+              <div>
+                <dt>Time</dt>
+                <dd>
+                  <time aria-label="Active elapsed time">{{ time }}</time>
+                </dd>
+              </div>
+              <div>
+                <dt>Clicks</dt>
+                <dd aria-label="Total clicks">
+                  {{ game.attempt.progress.totalClicks }}
+                </dd>
+              </div>
+              <div>
+                <dt>Board</dt>
+                <dd>{{ boardName }}</dd>
+              </div>
+              <div v-if="game.attempt.puzzleSettings">
+                <dt>Difficulty</dt>
+                <dd>
+                  {{ game.attempt.puzzleSettings.difficulty }} · max
+                  {{ game.attempt.puzzleSettings.maxRegionSize }}
+                </dd>
+              </div>
+            </dl>
+          </template>
+        </TerrainBoard>
         <aside class="play-inspector" aria-label="Puzzle tools and selection">
           <h2>Field notes</h2>
           <div
@@ -244,7 +331,10 @@ onUnmounted(() => {
               <b>{{ game.maxEntry }} cells</b>
             </div>
             <div class="region-cell-meta">
-              <span
+              <span v-if="game.attempt.cellPolygons"
+                >Tile {{ (game.selectedCell ?? 0) + 1 }}</span
+              >
+              <span v-else
                 >Row
                 {{
                   Math.floor((game.selectedCell ?? 0) / game.attempt.columns) +
@@ -274,19 +364,6 @@ onUnmounted(() => {
               ><input v-model="game.cycleMode" type="checkbox" />Click to change
               cycle (left + / right −)</label
             >
-            <label
-              ><input
-                type="checkbox"
-                :checked="game.attempt.progress.showConflicts"
-                :disabled="boardDisabled"
-                @change="
-                  game.command(
-                    'SHOW_CONFLICTS',
-                    ($event.target as HTMLInputElement).checked ? 1 : 0,
-                  )
-                "
-              />Continuous conflicts (assisted)</label
-            >
           </div>
           <div class="play-toolbar">
             <button
@@ -310,62 +387,7 @@ onUnmounted(() => {
             >
               Restore checkpoint
             </button>
-            <button :disabled="boardDisabled" @click="game.command('CHECK')">
-              Check conflicts
-            </button>
-            <button
-              :disabled="
-                boardDisabled ||
-                game.selectedCell === undefined ||
-                game.attempt.givens[game.selectedCell] !== 0
-              "
-              @click="game.command('CANDIDATES')"
-            >
-              Show candidates
-            </button>
-            <button :disabled="boardDisabled" @click="game.command('EXPLAIN')">
-              Explain a single
-            </button>
-            <button
-              :disabled="
-                boardDisabled ||
-                game.selectedCell === undefined ||
-                game.attempt.givens[game.selectedCell] !== 0
-              "
-              @click="reveal"
-            >
-              Reveal selected value
-            </button>
           </div>
-          <p v-if="game.attempt.progress.helpMessage" class="help-message">
-            {{ game.attempt.progress.helpMessage }}
-          </p>
-          <p v-if="game.attempt.progress.candidates.length">
-            Server candidates:
-            {{ game.attempt.progress.candidates.join(", ") }}. These are not
-            manual notes.
-          </p>
-          <p class="assistance">
-            Assistance: {{ game.attempt.progress.candidateRequests }} candidate
-            requests,
-            {{ game.attempt.progress.explanationRequests }} explanations,
-            {{ game.attempt.progress.reveals }} reveals
-            {{
-              game.attempt.progress.continuousConflictsUsed
-                ? " · continuous conflicts used"
-                : ""
-            }}.
-          </p>
-          <p v-if="game.attempt.progress.legacyAccuracy !== null">
-            Click accuracy: {{ game.attempt.progress.legacyAccuracy }}% ({{
-              game.attempt.progress.totalClicks
-            }}
-            clicks, {{ game.attempt.progress.totalMissClicks }} non-optimal)
-          </p>
-          <p v-else>
-            Click accuracy is unavailable after direct value entry; the
-            completed result will retain the entry/error counts instead.
-          </p>
           <p v-if="game.attempt.status === 'COMPLETED'" class="completion">
             Result saved · {{ time }} active ·
             {{ game.attempt.progress.valueEntryCount }} entries ·
@@ -377,6 +399,65 @@ onUnmounted(() => {
           </p>
         </aside>
       </div>
+      <dialog
+        ref="win"
+        class="win-dialog"
+        aria-labelledby="win-title"
+        @click.self="win?.close()"
+      >
+        <div class="win-card">
+          <p class="win-kicker">Puzzle solved</p>
+          <h2 id="win-title">Well played!</h2>
+          <p class="win-board">
+            {{ boardName }}
+            <template v-if="game.attempt.puzzleSettings">
+              · {{ game.attempt.puzzleSettings.difficulty }} · max region
+              {{ game.attempt.puzzleSettings.maxRegionSize }}
+            </template>
+          </p>
+          <dl class="win-stats">
+            <div>
+              <dt>Time</dt>
+              <dd>{{ time }}</dd>
+            </div>
+            <div>
+              <dt>Accuracy</dt>
+              <dd>
+                {{
+                  game.attempt.progress.legacyAccuracy === null
+                    ? "—"
+                    : `${game.attempt.progress.legacyAccuracy}%`
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt>Clicks</dt>
+              <dd>{{ game.attempt.progress.totalClicks }}</dd>
+            </div>
+            <div>
+              <dt>Missed</dt>
+              <dd>{{ game.attempt.progress.totalMissClicks }}</dd>
+            </div>
+          </dl>
+          <div class="win-player">
+            <span>Player</span>
+            <PlayerPicker
+              :current="winPlayer"
+              :players="winPlayers"
+              :disabled="winBusy"
+              label="Player for this result"
+              @pick="pickWinner"
+            />
+          </div>
+          <p v-if="winMessage" class="win-message" role="status">
+            {{ winMessage }}
+          </p>
+          <div class="win-actions">
+            <button class="primary" @click="newPuzzle">New puzzle</button>
+            <button @click="win?.close()">Close</button>
+          </div>
+        </div>
+      </dialog>
       <dialog ref="help" class="rules-dialog" aria-labelledby="rules-title">
         <h2 id="rules-title">Reading the atlas</h2>
         <p>
@@ -386,20 +467,16 @@ onUnmounted(() => {
         </p>
         <p>
           Terrain is decorative. Two forest regions remain separate when a bold
-          line divides them. Underlined numbers are fixed clues. A cell marked !
-          has a server-reported duplicate conflict, not necessarily every wrong
-          answer.
+          line divides them. Numbers with a thick red ring are fixed clues.
         </p>
         <p>
-          Click/tap selects; digits enter; Delete, Backspace or 0 clears; arrows
-          move; Home/End reach the first/last cell in a row. Tab exits the grid.
-          N toggles manual notes; Escape exits note mode. Notes are not computed
-          candidates.
+          Left-click a cell to increase its number, right-click to decrease.
+          Digits also enter values; Delete, Backspace or 0 clears; arrows move.
+          N toggles manual notes; Escape exits note mode.
         </p>
         <p>
-          Large maps start with readable scrollable cells. Fit overview is for
-          orientation; use Zoom to selection for precise entry. Browser zoom and
-          touch scrolling remain available.
+          Large maps start with readable scrollable cells. Use Fit overview for
+          orientation and Fullscreen map to just play.
         </p>
         <form method="dialog"><button>Close help</button></form>
       </dialog>

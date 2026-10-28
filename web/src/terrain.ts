@@ -53,6 +53,14 @@ export function assignRegionBiomes(
     }
   }
 
+  const assigned = colorRegions(adjacency);
+  cachedAssignmentKey = assignmentKey;
+  cachedAssignment = assigned;
+  return assigned;
+}
+
+/** Gives neighbouring regions different biomes (DSATUR order with backtracking). */
+function colorRegions(adjacency: Map<number, Set<number>>) {
   const assigned = new Map<number, number>();
   function colorNextRegion(): boolean {
     if (assigned.size === adjacency.size) return true;
@@ -96,8 +104,6 @@ export function assignRegionBiomes(
 
   if (!colorNextRegion())
     throw new Error("Region adjacency cannot be assigned distinct biomes.");
-  cachedAssignmentKey = assignmentKey;
-  cachedAssignment = assigned;
   return assigned;
 }
 
@@ -154,5 +160,119 @@ export function terrainGeometry(
     })),
     boundaries: boundaries.join(""),
     separators,
+  };
+}
+
+const pointKey = (x: number, y: number) =>
+  `${Math.round(x * 1000)},${Math.round(y * 1000)}`;
+
+/**
+ * Terrain for hexagon, triangle and pentagon boards. Polygons are flattened x,y lists in tile
+ * units; edges shared by two tiles of different regions become region boundaries.
+ */
+export function polygonTerrainGeometry(
+  polygons: readonly (readonly number[])[],
+  regionIds: readonly number[],
+) {
+  if (polygons.length !== regionIds.length || polygons.length === 0)
+    throw new Error("Terrain requires one polygon per cell.");
+  const edges = new Map<string, { cells: number[]; d: string }>();
+  let width = 0,
+    height = 0;
+  const cellPaths = polygons.map((polygon, cell) => {
+    const corners = polygon.length / 2;
+    const points: string[] = [];
+    for (let i = 0; i < corners; i++) {
+      const x = polygon[2 * i],
+        y = polygon[2 * i + 1];
+      const nx = polygon[(2 * i + 2) % polygon.length],
+        ny = polygon[(2 * i + 3) % polygon.length];
+      width = Math.max(width, x);
+      height = Math.max(height, y);
+      points.push(`${x} ${y}`);
+      const a = pointKey(x, y),
+        b = pointKey(nx, ny);
+      const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+      const edge = edges.get(key) ?? { cells: [], d: `M${x} ${y}L${nx} ${ny}` };
+      edge.cells.push(cell);
+      edges.set(key, edge);
+    }
+    return `M${points.join("L")}Z`;
+  });
+
+  const adjacency = new Map<number, Set<number>>();
+  for (const id of regionIds) {
+    if (!Number.isInteger(id) || id < 0)
+      throw new Error("Terrain requires valid region IDs.");
+    if (!adjacency.has(id)) adjacency.set(id, new Set());
+  }
+  const boundaries: string[] = [];
+  const regionBoundaries = new Map<number, string[]>();
+  for (const { cells, d } of edges.values()) {
+    const [first, second] = cells.map((cell) => regionIds[cell]);
+    if (second !== undefined && first !== second) {
+      adjacency.get(first)!.add(second);
+      adjacency.get(second)!.add(first);
+    }
+    if (second === undefined || first !== second) {
+      boundaries.push(d);
+      for (const id of new Set([first, second].filter((r) => r !== undefined)))
+        regionBoundaries.set(id, [...(regionBoundaries.get(id) ?? []), d]);
+    }
+  }
+  const assignedBiomes = colorRegions(adjacency);
+  const regionPaths = new Map<number, string[]>();
+  cellPaths.forEach((path, cell) =>
+    regionPaths.set(regionIds[cell], [
+      ...(regionPaths.get(regionIds[cell]) ?? []),
+      path,
+    ]),
+  );
+  return {
+    width,
+    height,
+    cellPaths,
+    centroids: polygons.map((polygon) => {
+      let x = 0,
+        y = 0;
+      for (let i = 0; i < polygon.length; i += 2) {
+        x += polygon[i];
+        y += polygon[i + 1];
+      }
+      return [(2 * x) / polygon.length, (2 * y) / polygon.length] as const;
+    }),
+    /** Diameter of the circle that fits inside the smallest tile, in tile units. */
+    inscribed: Math.min(
+      ...polygons.map((polygon) => {
+        const corners = polygon.length / 2;
+        let cx = 0,
+          cy = 0;
+        for (let i = 0; i < polygon.length; i += 2) {
+          cx += polygon[i] / corners;
+          cy += polygon[i + 1] / corners;
+        }
+        let nearest = Infinity;
+        for (let i = 0; i < corners; i++) {
+          const x1 = polygon[2 * i],
+            y1 = polygon[2 * i + 1];
+          const x2 = polygon[(2 * i + 2) % polygon.length],
+            y2 = polygon[(2 * i + 3) % polygon.length];
+          nearest = Math.min(
+            nearest,
+            Math.abs((x2 - x1) * (y1 - cy) - (x1 - cx) * (y2 - y1)) /
+              Math.hypot(x2 - x1, y2 - y1),
+          );
+        }
+        return 2 * nearest;
+      }),
+    ),
+    regions: [...regionPaths].map(([id, paths]) => ({
+      id,
+      path: paths.join(""),
+      boundary: (regionBoundaries.get(id) ?? []).join(""),
+      biome: assignedBiomes.get(id)!,
+    })),
+    boundaries: boundaries.join(""),
+    separators: cellPaths.join(""),
   };
 }

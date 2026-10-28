@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.Objects;
 
 public record GenerationSpec(
+        TileShape shape,
         int columns,
         int rows,
         int maxRegionSize,
@@ -13,7 +14,22 @@ public record GenerationSpec(
         long maxSearchNodes,
         Duration timeout,
         CancellationToken cancellationToken) {
+    public GenerationSpec(
+            int columns,
+            int rows,
+            int maxRegionSize,
+            Difficulty difficulty,
+            long seed,
+            int maxPartitionAttempts,
+            long maxSearchNodes,
+            Duration timeout,
+            CancellationToken cancellationToken) {
+        this(TileShape.SQUARE, columns, rows, maxRegionSize, difficulty, seed,
+                maxPartitionAttempts, maxSearchNodes, timeout, cancellationToken);
+    }
+
     public GenerationSpec {
+        Objects.requireNonNull(shape, "shape");
         if (columns <= 0 || rows <= 0 || (long) columns * rows > PuzzleDefinition.MAX_CELLS) {
             throw new IllegalArgumentException("Board dimensions must contain between 1 and 240 cells");
         }

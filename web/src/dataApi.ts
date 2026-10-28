@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { loadBootstrap, request } from "./api";
+import { loadBootstrap, request, tileShapeSchema } from "./api";
 
 const integer = z.number().int().safe().nonnegative();
 export const settingsSchema = z.strictObject({
@@ -11,6 +11,7 @@ export const settingsSchema = z.strictObject({
   maxRegionSize: integer.min(5).max(9),
   difficulty: z.enum(["EASY", "MEDIUM", "HARD"]),
   playerTag: z.string().regex(/^[A-Za-z]{0,3}$/),
+  shape: tileShapeSchema,
 });
 export const settingsSnapshotSchema = z.strictObject({
   revision: integer,
@@ -52,6 +53,7 @@ export const historyEntrySchema = z.strictObject({
       seed: z.string().regex(/^-?[0-9]{1,19}$/),
       engineVersion: z.string().max(64),
       generatorVersion: z.string().max(64),
+      shape: tileShapeSchema,
     })
     .nullable(),
 });
@@ -84,6 +86,30 @@ export const outcomeSchema = z.strictObject({
   alreadyImported: z.boolean(),
 });
 export const sourceSchema = z.strictObject({ source: z.string() });
+
+export const playerTagPattern = /^[A-Za-z]{1,3}$/;
+export function playersFrom(entries: HistoryEntry[], extra: string[] = []) {
+  return [
+    ...new Set(
+      [...entries.map((entry) => entry.playerTag?.trim() ?? ""), ...extra]
+        .map((tag) => tag.toUpperCase())
+        .filter((tag) => playerTagPattern.test(tag)),
+    ),
+  ].sort((first, second) => first.localeCompare(second));
+}
+export async function loadPlayers(extra: string[] = []) {
+  const all = await dataRequest(
+    "/api/v1/history?player=&mapSize=&scoring=&assistance=&sort=date-desc",
+    historySchema,
+  );
+  return playersFrom(all.entries, extra);
+}
+export function assignPlayer(recordId: string, playerTag: string) {
+  return dataRequest(`/api/v1/history/${recordId}/player`, historySchema, {
+    method: "POST",
+    body: JSON.stringify({ playerTag }),
+  });
+}
 
 export async function dataRequest<T>(
   path: string,

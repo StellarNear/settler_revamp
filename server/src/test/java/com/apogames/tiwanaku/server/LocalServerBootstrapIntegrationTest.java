@@ -18,6 +18,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
@@ -108,6 +109,43 @@ class LocalServerBootstrapIntegrationTest {
     }
 
     @Test
+    void generatesHexagonBoardsWithTheirTileGeometry() throws Exception {
+        String token = bootstrapToken();
+        String jobId = (String) json(send("POST", "/api/v1/generation-jobs",
+                """
+                {"columns":4,"rows":4,"maxRegionSize":5,"difficulty":"EASY","seed":7,"shape":"HEXAGON"}
+                """, token)).get("jobId");
+        Map<?, ?> job;
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        do {
+            Thread.sleep(25);
+            job = json(send("GET", "/api/v1/generation-jobs/" + jobId, null, null));
+        } while (!"GENERATED".equals(job.get("status")) && System.nanoTime() < deadline);
+        assertEquals("GENERATED", job.get("status"));
+
+        HttpResponse<String> created = send("POST", "/api/v1/attempts", JSON.writeValueAsString(Map.of(
+                "requestId", UUID.randomUUID().toString(),
+                "generationJobId", jobId,
+                "editorSessionId", UUID.randomUUID().toString())), token);
+        assertEquals(200, created.statusCode(), created.body());
+        AttemptSnapshot attempt = JSON.readValue(created.body(), AttemptSnapshot.class);
+        assertEquals("HEXAGON", attempt.puzzleSettings().shape());
+        assertEquals(16, attempt.cellPolygons().length);
+        for (double[] polygon : attempt.cellPolygons()) {
+            assertEquals(12, polygon.length);
+        }
+
+        HttpResponse<String> reloaded = send("GET", "/api/v1/attempts/" + attempt.attemptId()
+                + "?editorSessionId=" + UUID.randomUUID(), null, null);
+        assertEquals(200, reloaded.statusCode());
+        assertEquals(16, JSON.readValue(reloaded.body(), AttemptSnapshot.class).cellPolygons().length);
+
+        assertEquals(400, send("POST", "/api/v1/generation-jobs",
+                """
+                {"columns":4,"rows":4,"maxRegionSize":5,"difficulty":"EASY","seed":7,"shape":"OCTAGON"}
+                """, token).statusCode());
+    }
+    @Test
     void generatesPersistsAndDeduplicatesACompletedAttempt() throws Exception {
         String token = bootstrapToken();
         Map<?, ?> jobResponse = json(send(
@@ -138,6 +176,8 @@ class LocalServerBootstrapIntegrationTest {
                 token);
         assertEquals(200, createResponse.statusCode(), createResponse.body());
         AttemptSnapshot created = JSON.readValue(createResponse.body(), AttemptSnapshot.class);
+        assertEquals("SQUARE", created.puzzleSettings().shape());
+        assertNull(created.cellPolygons());
         String attemptId = created.attemptId();
         int[] givens = created.givens();
         assertEquals(1, countGivens(givens));

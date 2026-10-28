@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { assignRegionBiomes, biomes, terrainGeometry } from "./terrain";
+import {
+  assignRegionBiomes,
+  biomes,
+  polygonTerrainGeometry,
+  terrainGeometry,
+} from "./terrain";
 
 describe("board-coordinate terrain projection", () => {
   it("keeps the approved sea and sand while giving mountains a neutral gray palette", () => {
@@ -97,5 +102,23 @@ describe("board-coordinate terrain projection", () => {
   it("refuses malformed projection inputs rather than drawing a fallback board", () => {
     expect(() => terrainGeometry(2, 1, [0])).toThrow();
     expect(() => terrainGeometry(1, 1, [-1])).toThrow();
+  });
+  it("projects polygon tiles with shared-edge boundaries and distinct neighbouring biomes", () => {
+    const triangles = [
+      [0, 1, 0.5, 0, 1, 1],
+      [0.5, 0, 1.5, 0, 1, 1],
+      [1, 1, 1.5, 0, 2, 1],
+    ];
+    const tiles = polygonTerrainGeometry(triangles, [4, 4, 7]);
+    expect(tiles.width).toBe(2);
+    expect(tiles.height).toBe(1);
+    expect(tiles.cellPaths).toHaveLength(3);
+    expect(tiles.centroids[1]).toEqual([1, 1 / 3]);
+    expect(tiles.inscribed).toBeGreaterThan(0.5);
+    expect(tiles.regions.map((region) => region.id)).toEqual([4, 7]);
+    expect(tiles.regions[0].biome).not.toBe(tiles.regions[1].biome);
+    expect(tiles.boundaries).toContain("M1.5 0L1 1");
+    expect(tiles.boundaries).not.toContain("M0.5 0L1 1");
+    expect(() => polygonTerrainGeometry(triangles, [4, 4])).toThrow();
   });
 });

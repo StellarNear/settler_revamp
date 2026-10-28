@@ -6,7 +6,8 @@ public record HistoryEntry(
         Integer legacyAccuracy, Long totalClicks, Long totalMissClicks,
         Assistance assistance, PuzzleSettings puzzleSettings) {
     public record PuzzleSettings(int columns, int rows, int maxRegionSize, String difficulty,
-                                 String seed, String engineVersion, String generatorVersion) { }
+                                 String seed, String engineVersion, String generatorVersion,
+                                 String shape) { }
     public record Assistance(Integer wrongEntries, Integer candidates, Integer explanations, Integer reveals,
                              Boolean continuousConflicts, Boolean replay) { }
 }

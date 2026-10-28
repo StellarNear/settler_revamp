@@ -23,14 +23,9 @@ public final class BoardRules {
                 return false;
             }
 
-            int x = cell % puzzle.columns();
-            int y = cell / puzzle.columns();
-            for (int neighborY = Math.max(0, y - 1); neighborY <= Math.min(puzzle.rows() - 1, y + 1); neighborY++) {
-                for (int neighborX = Math.max(0, x - 1); neighborX <= Math.min(puzzle.columns() - 1, x + 1); neighborX++) {
-                    int neighbor = neighborY * puzzle.columns() + neighborX;
-                    if (neighbor < cell && values[neighbor] == value) {
-                        return false;
-                    }
+            for (int neighbor : puzzle.topology().conflictNeighbors(cell)) {
+                if (neighbor < cell && values[neighbor] == value) {
+                    return false;
                 }
             }
         }
@@ -60,14 +55,9 @@ public final class BoardRules {
                     || ++seen[region][value] != 1) {
                 return false;
             }
-            int x = cell % puzzle.columns();
-            int y = cell / puzzle.columns();
-            for (int neighborY = Math.max(0, y - 1); neighborY <= Math.min(puzzle.rows() - 1, y + 1); neighborY++) {
-                for (int neighborX = Math.max(0, x - 1); neighborX <= Math.min(puzzle.columns() - 1, x + 1); neighborX++) {
-                    int neighbor = neighborY * puzzle.columns() + neighborX;
-                    if (neighbor < cell && values[neighbor] == value) {
-                        return false;
-                    }
+            for (int neighbor : puzzle.topology().conflictNeighbors(cell)) {
+                if (neighbor < cell && values[neighbor] == value) {
+                    return false;
                 }
             }
         }

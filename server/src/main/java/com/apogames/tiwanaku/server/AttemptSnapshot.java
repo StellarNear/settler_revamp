@@ -13,7 +13,9 @@ public record AttemptSnapshot(
         String editorSessionId,
         String editorLeaseExpiresAt,
         int moveCount,
-        ProgressSnapshot progress) {
+        ProgressSnapshot progress,
+        HistoryEntry.PuzzleSettings puzzleSettings,
+        double[][] cellPolygons) {
     public record ProgressSnapshot(
             int[] notes, long elapsedMillis, boolean started, boolean replay,
             int valueEntryCount, Integer wrongEntryCount, int candidateRequests, int explanationRequests,

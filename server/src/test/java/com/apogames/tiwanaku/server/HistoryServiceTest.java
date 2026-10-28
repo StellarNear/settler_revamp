@@ -96,6 +96,8 @@ class HistoryServiceTest {
         assertEquals(4, history.importSource(source, "logical", logical.fingerprint(), true).imported());
         assertEquals(before, history.history("", "", "", "", "date-desc"));
         assertEquals(1, history.history("", "", "", "replay", "date-desc").summary().count());
+        assertEquals(4, history.history("", "", "", "", "date-desc", "SQUARE").summary().count());
+        assertEquals(0, history.history("", "", "", "", "date-desc", "HEXAGON").summary().count());
         history.rename(UUID.fromString(directId), "xy");
         assertEquals("XY", history.history("XY", "", "", "", "date-desc").entries().getFirst().playerTag());
         history.delete(UUID.fromString(directId));
@@ -106,8 +108,10 @@ class HistoryServiceTest {
 
     @Test void badChecksumFutureArchiveMalformedValuesAndStaleSettingsAreExplicitlyRejected() {
         var saved = history.settings();
-        var next = new LocalSettings("de", "light", true, true, "3x3", 9, "HARD", "ab");
-        assertEquals("AB", history.saveSettings(saved.revision(), next).settings().playerTag());
+        var next = new LocalSettings("de", "light", true, true, "3x3", 9, "HARD", "ab", "HEXAGON");
+        var savedNext = history.saveSettings(saved.revision(), next).settings();
+        assertEquals("AB", savedNext.playerTag());
+        assertEquals("HEXAGON", savedNext.shape());
         assertThrows(ApiException.class, () -> history.saveSettings(saved.revision(), next));
         assertThrows(ApiException.class, () -> history.rename(UUID.randomUUID(), "1234"));
         var archive = history.exportArchive();
@@ -146,7 +150,7 @@ class HistoryServiceTest {
         String fingerprint = history.preview(valid, "logical").fingerprint();
         history.importSource(valid, "logical", fingerprint, false);
         assertThrows(ApiException.class, () -> history.importSource(valid, "logical", fingerprint, true));
-        var missingFlag = new LocalSettings("en", "light", null, false, "7x5", 5, "EASY", "");
+        var missingFlag = new LocalSettings("en", "light", null, false, "7x5", 5, "EASY", "", null);
         assertThrows(ApiException.class, () -> history.saveSettings(history.settings().revision(), missingFlag));
     }
 }

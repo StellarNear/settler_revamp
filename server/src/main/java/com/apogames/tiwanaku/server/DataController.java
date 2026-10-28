@@ -30,8 +30,9 @@ public final class DataController {
     @GetMapping("/history") public HistoryService.History history(
             @RequestParam(value="player",defaultValue="") String player, @RequestParam(value="mapSize",defaultValue="") String mapSize,
             @RequestParam(value="scoring",defaultValue="") String scoring, @RequestParam(value="assistance",defaultValue="") String assistance,
-            @RequestParam(value="sort",defaultValue="date-desc") String sort) {
-        return history.history(player, mapSize, scoring, assistance, sort);
+            @RequestParam(value="sort",defaultValue="date-desc") String sort,
+            @RequestParam(value="shape",defaultValue="") String shape) {
+        return history.history(player, mapSize, scoring, assistance, sort, shape);
     }
     @PostMapping("/history/{id}/player") public HistoryService.History rename(@PathVariable("id") UUID id, @Valid @RequestBody RenameRequest request) {
         history.rename(id, request.playerTag());

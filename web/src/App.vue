@@ -28,6 +28,7 @@ watch(
     game.preset = settings.preset;
     game.maxRegionSize = settings.maxRegionSize;
     game.difficulty = settings.difficulty;
+    game.shape = settings.shape;
   },
 );
 let refreshTimer: number | undefined;

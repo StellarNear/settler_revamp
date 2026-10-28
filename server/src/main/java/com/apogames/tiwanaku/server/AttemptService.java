@@ -3,6 +3,7 @@ package com.apogames.tiwanaku.server;
 import com.apogames.tiwanaku.engine.BoardRules;
 import com.apogames.tiwanaku.engine.GeneratedPuzzle;
 import com.apogames.tiwanaku.engine.PuzzleDefinition;
+import com.apogames.tiwanaku.engine.TileShape;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -72,10 +73,6 @@ public final class AttemptService {
         int[] values = puzzle.givens();
         Instant leaseExpiresAt = clock.now().plusSeconds(EDITOR_LEASE_SECONDS);
         GameProgress progress = GameProgress.initial(values.length, original != null);
-        LocalSettings defaults = jdbc.queryForObject("SELECT settings_json FROM local_settings WHERE singleton_id=1",
-                (rs, row) -> fromJson(rs.getString(1), LocalSettings.class));
-        progress.showConflicts = defaults.showConflicts();
-        progress.continuousConflictsUsed = defaults.showConflicts();
 
         return transactions.execute(status -> {
             if (original == null) jdbc.update(
@@ -389,22 +386,40 @@ public final class AttemptService {
                 timestamp(attempt.get("EDITOR_LEASE_EXPIRES_AT")) == null ? null
                         : timestamp(attempt.get("EDITOR_LEASE_EXPIRES_AT")).toString(),
                 ((Number) attempt.get("MOVE_COUNT")).intValue(),
-                snapshot(progress(attempt, puzzle.definition().cellCount()), "COMPLETED".equals(attempt.get("STATUS"))));
+                snapshot(progress(attempt, puzzle.definition().cellCount()), "COMPLETED".equals(attempt.get("STATUS"))),
+                puzzle.settings(),
+                cellPolygons(puzzle.definition()));
+    }
+
+    private static double[][] cellPolygons(PuzzleDefinition definition) {
+        if (definition.shape() == TileShape.SQUARE) {
+            return null;
+        }
+        double[][] polygons = new double[definition.cellCount()][];
+        for (int cell = 0; cell < polygons.length; cell++) {
+            polygons[cell] = definition.topology().polygon(cell);
+        }
+        return polygons;
     }
 
     private PuzzleRow loadPuzzle(String puzzleId) {
-        Map<String, Object> row = jdbc.queryForMap(
+        Map<String, Object> row = queryOptional(
                 """
-                SELECT columns_count, rows_count, region_ids, givens, solution
+                SELECT columns_count, rows_count, region_ids, givens, solution, generation_json
                 FROM puzzles WHERE puzzle_id = ?
                 """,
                 puzzleId);
+        if (row == null) throw ApiException.notFound("Puzzle was not found");
+        Object settings = row.get("GENERATION_JSON");
+        HistoryEntry.PuzzleSettings puzzleSettings =
+                settings == null ? null : fromJson(text(settings), HistoryEntry.PuzzleSettings.class);
         PuzzleDefinition definition = new PuzzleDefinition(
+                TileShape.parse(puzzleSettings == null ? null : puzzleSettings.shape()),
                 ((Number) row.get("COLUMNS_COUNT")).intValue(),
                 ((Number) row.get("ROWS_COUNT")).intValue(),
                 intArray(text(row.get("REGION_IDS"))),
                 intArray(text(row.get("GIVENS"))));
-        return new PuzzleRow(definition, intArray(text(row.get("SOLUTION"))));
+        return new PuzzleRow(definition, intArray(text(row.get("SOLUTION"))), puzzleSettings);
     }
 
     private GameProgress progress(Map<String, Object> row, int cells) {
@@ -496,6 +511,6 @@ public final class AttemptService {
         };
     }
 
-    private record PuzzleRow(PuzzleDefinition definition, int[] solution) {
+    private record PuzzleRow(PuzzleDefinition definition, int[] solution, HistoryEntry.PuzzleSettings settings) {
     }
 }

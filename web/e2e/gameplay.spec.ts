@@ -17,6 +17,7 @@ async function openGame(
   columns = 3,
   rows = 3,
   clickCycle = false,
+  shape = "SQUARE",
 ) {
   const bootstrap = bootstrapSchema.parse(
     await (await request.get("/api/v1/bootstrap")).json(),
@@ -35,6 +36,7 @@ async function openGame(
           maxRegionSize: 5,
           difficulty: "EASY",
           seed: 3045,
+          shape,
         },
       })
     ).json(),
@@ -71,7 +73,9 @@ async function openGame(
     { id: board.attemptId, editor: editorSessionId },
   );
   await page.goto("/play");
-  await expect(page.locator(".cell")).toHaveCount(columns * rows);
+  await expect(
+    page.locator(shape === "SQUARE" ? ".cell" : ".poly-cell"),
+  ).toHaveCount(columns * rows);
   await expect(page.locator(".board-meta")).toContainText("READY");
   const clickCycleToggle = page.getByLabel("Click to change cycle", {
     exact: false,
@@ -80,7 +84,7 @@ async function openGame(
   return { board, headers, editorSessionId };
 }
 
-test("left/right board clicks cycle values and show legacy accuracy by default", async ({
+test("left/right board clicks cycle values and count clicks in the HUD", async ({
   page,
   request,
 }) => {
@@ -90,9 +94,12 @@ test("left/right board clicks cycle values and show legacy accuracy by default",
   const regionId = board.regionIds[cell];
   const regionSize = board.regionIds.filter((id) => id === regionId).length;
 
-  await expect(
-    page.getByText("Click accuracy: 100%", { exact: false }),
-  ).toBeVisible();
+  await expect(page.getByLabel("Total clicks")).toHaveText("0");
+  await expect(page.locator(".hud")).toContainText("3 × 3");
+  await expect(page.locator(".hud")).toContainText("EASY · max 5");
+  await expect(page.getByText("Click accuracy", { exact: false })).toHaveCount(
+    0,
+  );
   await target.click();
   await expect(target.locator(".cell-value")).toHaveText("1");
   await expect(page.locator(".selected-region-boundary")).toBeVisible();
@@ -102,18 +109,14 @@ test("left/right board clicks cycle values and show legacy accuracy by default",
   await expect(page.locator(".selected-region")).toContainText(
     `${regionSize} cells`,
   );
-  await expect(
-    page.getByText("Click accuracy: 100%", { exact: false }),
-  ).toBeVisible();
+  await expect(page.getByLabel("Total clicks")).toHaveText("1");
 
   await target.click({ button: "right" });
   await expect(target.locator(".cell-value")).toHaveCount(0);
-  await expect(
-    page.getByText("Click accuracy: 0%", { exact: false }),
-  ).toBeVisible();
+  await expect(page.getByLabel("Total clicks")).toHaveText("2");
 });
 
-test("notes, assistance, cycling, history, pause/reload and replay are Java-persisted", async ({
+test("notes, cycling, history, pause/reload and replay are Java-persisted", async ({
   page,
   request,
 }) => {
@@ -126,12 +129,9 @@ test("notes, assistance, cycling, history, pause/reload and replay are Java-pers
     page.locator(".cell").nth(cell).locator(".manual-notes"),
   ).toHaveText("1");
   await expect(page.locator(".board-meta")).toContainText("READY");
-  await page
-    .getByRole("button", { name: "Show candidates", exact: true })
-    .click();
-  await expect(page.locator(".assistance")).toContainText(
-    "1 candidate requests",
-  );
+  await expect(
+    page.getByRole("button", { name: "Show candidates", exact: true }),
+  ).toHaveCount(0);
   await page
     .getByRole("button", { name: "Save checkpoint", exact: true })
     .click();
@@ -171,7 +171,7 @@ test("notes, assistance, cycling, history, pause/reload and replay are Java-pers
   );
   expect(saved.status).toBe("SUSPENDED");
   expect(saved.progress.valueEntryCount).toBe(1);
-  expect(saved.progress.candidateRequests).toBe(1);
+  expect(saved.progress.candidateRequests).toBe(0);
   await page.getByRole("link", { name: "Play", exact: true }).click();
   page.once("dialog", (dialog) => dialog.accept());
   await page
@@ -265,7 +265,74 @@ test("touch taps cycle values to complete a real Java puzzle", async ({
       await expect(target.locator(".cell-value")).toHaveText(String(tap + 1));
     }
     await expect(page.locator(".completion")).toContainText("Result saved");
+    const win = page.getByRole("dialog", { name: "Well played!" });
+    await expect(win).toBeVisible();
+    await expect(win).toContainText("100%");
+    await expect(win).toContainText(String(answer));
+    await win.getByLabel("Player for this result").selectOption("__new__");
+    await win.getByLabel("New player tag").fill("tap");
+    await win.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(win.getByRole("status")).toHaveText("Result saved for TAP.");
+    const history = await (await request.get("/api/v1/history")).json();
+    expect(
+      history.entries.find(
+        (entry: { recordId: string }) => entry.recordId === board.attemptId,
+      ).playerTag,
+    ).toBe("TAP");
   } finally {
     await context.close();
   }
+});
+
+test("hexagon boards are generated from setup and played with left/right clicks", async ({
+  page,
+}) => {
+  await page.goto("/setup");
+  await page
+    .getByRole("combobox", { name: "BOARD", exact: true })
+    .selectOption("4x4");
+  await page
+    .getByRole("combobox", { name: "TILES", exact: true })
+    .selectOption("HEXAGON");
+  await page.getByRole("button", { name: /generate/i }).click();
+  await expect(page.locator(".poly-cell")).toHaveCount(16, { timeout: 30000 });
+  await expect(page.locator(".cell")).toHaveCount(0);
+  await expect(page.locator(".hud")).toContainText("4 × 4 · Hexagons");
+  const open = page.locator(".poly-cell:not(.given)").first();
+  const labels = page.locator(".poly-label .cell-value");
+  const before = await labels.count();
+  await open.click();
+  await expect(open).toHaveClass(/selected/);
+  await expect(page.locator(".selected-region-boundary")).toBeVisible();
+  await expect(labels).toHaveCount(before + 1);
+  await expect(page.getByLabel("Total clicks")).toHaveText("1");
+  await open.click({ button: "right" });
+  await expect(labels).toHaveCount(before);
+  await expect(page.getByLabel("Total clicks")).toHaveText("2");
+});
+
+test("a won hexagon game is recorded with its tile shape on the leaderboard", async ({
+  page,
+  request,
+}) => {
+  const { board } = await openGame(page, request, 2, 1, true, "HEXAGON");
+  expect(board.cellPolygons).toHaveLength(2);
+  expect(board.puzzleSettings?.shape).toBe("HEXAGON");
+  const cell = board.givens.indexOf(0);
+  expect(cell).toBeGreaterThanOrEqual(0);
+  const answer = board.givens[1 - cell] === 1 ? 2 : 1;
+  const target = page.locator(".poly-cell").nth(cell);
+  for (let click = 0; click < answer; click++) await target.click();
+  await expect(
+    page.getByRole("dialog", { name: "Well played!" }),
+  ).toContainText("Hexagons");
+  await page.goto("/history");
+  const row = page.locator(`tr[data-record-id="${board.attemptId}"]`);
+  await expect(row).toContainText("Hexagons");
+  await page.getByLabel("Tiles filter", { exact: true }).selectOption("SQUARE");
+  await expect(row).toHaveCount(0);
+  await page
+    .getByLabel("Tiles filter", { exact: true })
+    .selectOption("HEXAGON");
+  await expect(row).toBeVisible();
 });

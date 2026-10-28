@@ -43,6 +43,10 @@ public final class HistoryService {
     }
 
     public History history(String player, String mapSize, String scoring, String assistance, String sort) {
+        return history(player, mapSize, scoring, assistance, sort, "");
+    }
+
+    public History history(String player, String mapSize, String scoring, String assistance, String sort, String shape) {
         if (!List.of("date-desc", "date-asc", "time-asc", "time-desc").contains(sort))
             throw ApiException.badRequest("Unsupported history sort");
         if (!List.of("", "assisted", "unassisted", "unknown", "replay").contains(assistance))
@@ -52,6 +56,7 @@ public final class HistoryService {
                 .filter(entry -> mapSize.isEmpty() || mapSize.equals(entry.mapSize()))
                 .filter(entry -> scoring.isEmpty() || scoring.equals(entry.scoringVersion()))
                 .filter(entry -> assistance.isEmpty() || matchesAssistance(entry, assistance))
+                .filter(entry -> shape.isEmpty() || shape.equals(shapeOf(entry)))
                 .sorted(comparator(sort)).toList();
         long sum = 0, percent = 0;
         int known = 0, legacy = 0;
@@ -247,10 +252,17 @@ public final class HistoryService {
                     || puzzle.difficulty() == null || !List.of("EASY","MEDIUM","HARD").contains(puzzle.difficulty())
                     || puzzle.seed() == null || !puzzle.seed().matches("-?[0-9]{1,19}")
                     || puzzle.engineVersion() == null || puzzle.engineVersion().length() > 64
-                    || puzzle.generatorVersion() == null || puzzle.generatorVersion().length() > 64))
+                    || puzzle.generatorVersion() == null || puzzle.generatorVersion().length() > 64
+                    || puzzle.shape() != null && !List.of("SQUARE","HEXAGON","TRIANGLE","PENTAGON").contains(puzzle.shape())))
                 throw ApiException.badRequest("Invalid puzzle settings metadata");
         }
         return payload;
+    }
+
+    /** Records without a recorded shape were played on the original square grid. */
+    static String shapeOf(HistoryEntry entry) {
+        return entry.puzzleSettings() == null || entry.puzzleSettings().shape() == null
+                ? "SQUARE" : entry.puzzleSettings().shape();
     }
 
     private boolean safe(Long value) { return value == null || value >= 0 && value <= 9_007_199_254_740_991L; }

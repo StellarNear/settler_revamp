@@ -193,17 +193,12 @@ public final class ExactCoverSolver {
                 edgesByCell.add(new ArrayList<>(8));
             }
             for (int cell = 0; cell < cellCount; cell++) {
-                int x = cell % puzzle.columns();
-                int y = cell / puzzle.columns();
-                for (int neighborY = Math.max(0, y - 1); neighborY <= Math.min(puzzle.rows() - 1, y + 1); neighborY++) {
-                    for (int neighborX = Math.max(0, x - 1); neighborX <= Math.min(puzzle.columns() - 1, x + 1); neighborX++) {
-                        int neighbor = neighborY * puzzle.columns() + neighborX;
-                        if (neighbor > cell) {
-                            int edgeIndex = edges.size();
-                            edges.add(new int[]{cell, neighbor});
-                            edgesByCell.get(cell).add(edgeIndex);
-                            edgesByCell.get(neighbor).add(edgeIndex);
-                        }
+                for (int neighbor : puzzle.topology().conflictNeighbors(cell)) {
+                    if (neighbor > cell) {
+                        int edgeIndex = edges.size();
+                        edges.add(new int[]{cell, neighbor});
+                        edgesByCell.get(cell).add(edgeIndex);
+                        edgesByCell.get(neighbor).add(edgeIndex);
                     }
                 }
             }

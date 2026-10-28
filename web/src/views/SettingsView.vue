@@ -3,6 +3,8 @@ import { onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useDataStore } from "../stores/data";
 import type { LocalSettings } from "../dataApi";
+import { tileShapes } from "../api";
+import { shapeLabels } from "../shapes";
 const { t } = useI18n();
 const data = useDataStore();
 const draft = ref<LocalSettings>();
@@ -42,10 +44,6 @@ onMounted(() => void data.load());
         detail</label
       >
       <label
-        ><input v-model="draft.showConflicts" type="checkbox" />Continuous
-        conflicts for new attempts (assisted)</label
-      >
-      <label
         >Default board<select v-model="draft.preset">
           <option
             v-for="size in [
@@ -60,6 +58,13 @@ onMounted(() => void data.load());
             :key="size"
           >
             {{ size }}
+          </option>
+        </select></label
+      >
+      <label
+        >Default tiles<select v-model="draft.shape">
+          <option v-for="shape in tileShapes" :key="shape" :value="shape">
+            {{ shapeLabels[shape] }}
           </option>
         </select></label
       >

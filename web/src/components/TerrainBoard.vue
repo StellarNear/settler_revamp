@@ -9,7 +9,7 @@ import {
   watch,
 } from "vue";
 import type { AttemptSnapshot } from "../api";
-import { biomes, terrainGeometry } from "../terrain";
+import { biomes, polygonTerrainGeometry, terrainGeometry } from "../terrain";
 
 const props = defineProps<{
   attempt: AttemptSnapshot;
@@ -32,36 +32,66 @@ const available = ref(0);
 const availableHeight = ref(0);
 const fullscreen = ref(false);
 const fullscreenError = ref("");
+type Geometry =
+  | ReturnType<typeof terrainGeometry>
+  | ReturnType<typeof polygonTerrainGeometry>;
 let cachedGeometryKey = "";
-let cachedGeometry = terrainGeometry(
-  props.attempt.columns,
-  props.attempt.rows,
-  props.attempt.regionIds,
-);
+let cachedGeometry: Geometry | undefined;
 const geometry = computed(() => {
-  const { columns, rows, regionIds } = props.attempt;
-  const key = `${columns}x${rows}:${regionIds.join(",")}`;
-  if (key !== cachedGeometryKey) {
-    cachedGeometry = terrainGeometry(columns, rows, regionIds);
+  const { columns, rows, regionIds, cellPolygons, attemptId } = props.attempt;
+  const key = `${cellPolygons ? attemptId : "grid"}:${columns}x${rows}:${regionIds.join(",")}`;
+  if (key !== cachedGeometryKey || !cachedGeometry) {
+    cachedGeometry = cellPolygons
+      ? polygonTerrainGeometry(cellPolygons, regionIds)
+      : terrainGeometry(columns, rows, regionIds);
     cachedGeometryKey = key;
   }
   return cachedGeometry;
 });
+const polygonGeometry = computed(() =>
+  "cellPaths" in geometry.value ? geometry.value : undefined,
+);
+/** Pixels per tile unit on hexagon, triangle and pentagon boards. */
+const tileScale = computed(() => {
+  const tiles = polygonGeometry.value;
+  if (!tiles) return 0;
+  const unitsPerColumn = tiles.width / props.attempt.columns;
+  if (fullscreen.value)
+    return Math.max(
+      8,
+      Math.min(
+        (available.value - 24) / tiles.width,
+        (availableHeight.value - 96) / tiles.height,
+      ),
+    );
+  if (fitted.value)
+    return Math.max(
+      8,
+      Math.min(44 / unitsPerColumn, (available.value - 8) / tiles.width),
+    );
+  return size.value / unitsPerColumn;
+});
+const terrainViewBox = computed(() =>
+  polygonGeometry.value
+    ? `0 0 ${polygonGeometry.value.width} ${polygonGeometry.value.height}`
+    : `0 0 ${props.attempt.columns} ${props.attempt.rows}`,
+);
+function tileClick(index: number, event: MouseEvent) {
+  if (!props.disabled) emit("select", index, event);
+}
+function tileSecondary(index: number) {
+  if (!props.disabled) emit("secondary", index);
+}
 const selectedRegion = computed(() =>
   props.selected === undefined
     ? undefined
     : props.attempt.regionIds[props.selected],
 );
-const selectedBoundary = computed(
-  () =>
-    geometry.value.regions.find((region) => region.id === selectedRegion.value)
-      ?.boundary,
+const selectedGeometry = computed(() =>
+  geometry.value.regions.find((region) => region.id === selectedRegion.value),
 );
-const selectedBiome = computed(
-  () =>
-    geometry.value.regions.find((region) => region.id === selectedRegion.value)
-      ?.biome,
-);
+const selectedBoundary = computed(() => selectedGeometry.value?.boundary);
+const selectedBiome = computed(() => selectedGeometry.value?.biome);
 const cellSize = computed(() =>
   fullscreen.value
     ? Math.max(
@@ -120,11 +150,16 @@ function label(index: number) {
   const notes = noteValues(index)
     .filter((value) => value !== null)
     .join(", ");
-  return `Row ${Math.floor(index / current.columns) + 1}, column ${(index % current.columns) + 1}, region ${current.regionIds[index] + 1}, ${current.givens[index] ? "given" : "editable"}, ${current.values[index] ? `value ${current.values[index]}` : "empty"}${notes ? `, notes ${notes}` : ""}${current.progress.conflicts.includes(index) ? ", conflict" : ""}`;
+  const position = current.cellPolygons
+    ? `Tile ${index + 1}`
+    : `Row ${Math.floor(index / current.columns) + 1}, column ${(index % current.columns) + 1}`;
+  return `${position}, region ${current.regionIds[index] + 1}, ${current.givens[index] ? "given" : "editable"}, ${current.values[index] ? `value ${current.values[index]}` : "empty"}${notes ? `, notes ${notes}` : ""}${current.progress.conflicts.includes(index) ? ", conflict" : ""}`;
 }
 async function focus(index: number) {
   await nextTick();
-  const cell = board.value?.querySelectorAll<HTMLButtonElement>(".cell")[index];
+  const cell = board.value?.querySelectorAll<HTMLElement | SVGElement>(
+    ".cell, .poly-cell",
+  )[index];
   cell?.focus({ preventScroll: true });
   cell?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
@@ -153,7 +188,8 @@ watch(
   async (index) => {
     if (
       index !== undefined &&
-      document.activeElement?.classList.contains("cell")
+      (document.activeElement?.classList.contains("cell") ||
+        document.activeElement?.classList.contains("poly-cell"))
     )
       await focus(index);
   },
@@ -187,6 +223,7 @@ defineExpose({ focus, selectedBiome });
       <button :aria-pressed="fullscreen" @click="toggleFullscreen">
         {{ fullscreen ? "Exit fullscreen" : "Fullscreen map" }}
       </button>
+      <div class="board-hud"><slot name="hud" /></div>
     </div>
     <p v-if="fullscreenError" class="error" role="alert">
       {{ fullscreenError }}
@@ -207,20 +244,34 @@ defineExpose({ focus, selectedBiome });
       <div
         ref="board"
         class="board"
-        :class="{ 'reduced-terrain': reducedDetail, 'fit-overview': fitted }"
-        :style="{
-          '--columns': attempt.columns,
-          '--rows': attempt.rows,
-          '--cell-size': `${cellSize}px`,
+        :class="{
+          'reduced-terrain': reducedDetail,
+          'fit-overview': fitted,
+          'poly-board': polygonGeometry,
         }"
-        role="grid"
-        :aria-rowcount="attempt.rows"
-        :aria-colcount="attempt.columns"
-        aria-label="Tiwanaku number grid"
+        :style="
+          polygonGeometry
+            ? {
+                width: `${polygonGeometry.width * tileScale}px`,
+                height: `${polygonGeometry.height * tileScale}px`,
+                '--cell-size': `${polygonGeometry.inscribed * tileScale}px`,
+              }
+            : {
+                '--columns': attempt.columns,
+                '--rows': attempt.rows,
+                '--cell-size': `${cellSize}px`,
+              }
+        "
+        :role="polygonGeometry ? 'group' : 'grid'"
+        :aria-rowcount="polygonGeometry ? undefined : attempt.rows"
+        :aria-colcount="polygonGeometry ? undefined : attempt.columns"
+        :aria-label="
+          polygonGeometry ? 'Tiwanaku tile board' : 'Tiwanaku number grid'
+        "
       >
         <svg
           class="terrain-layer"
-          :viewBox="`0 0 ${attempt.columns} ${attempt.rows}`"
+          :viewBox="terrainViewBox"
           preserveAspectRatio="none"
           aria-hidden="true"
           focusable="false"
@@ -324,6 +375,11 @@ defineExpose({ focus, selectedBiome });
           </g>
           <path class="cell-separators" :d="geometry.separators" fill="none" />
           <path
+            v-if="selectedGeometry"
+            class="selected-region-fill"
+            :d="selectedGeometry.path"
+          />
+          <path
             class="region-boundary-halo"
             :d="geometry.boundaries"
             fill="none"
@@ -346,8 +402,62 @@ defineExpose({ focus, selectedBiome });
             fill="none"
           />
         </svg>
+        <template v-if="polygonGeometry">
+          <svg
+            class="poly-hit-layer"
+            :viewBox="terrainViewBox"
+            preserveAspectRatio="none"
+          >
+            <path
+              v-for="(path, index) in polygonGeometry.cellPaths"
+              :key="index"
+              class="poly-cell"
+              :class="{
+                given: attempt.givens[index] !== 0,
+                selected: selected === index,
+                conflict: attempt.progress.conflicts.includes(index),
+              }"
+              :d="path"
+              role="button"
+              :aria-label="label(index)"
+              :aria-pressed="selected === index"
+              :aria-disabled="disabled"
+              :tabindex="index === (selected ?? 0) ? 0 : -1"
+              @focus="emit('focusCell', index)"
+              @click="tileClick(index, $event)"
+              @contextmenu.prevent="tileSecondary(index)"
+            />
+          </svg>
+          <template
+            v-for="(center, index) in polygonGeometry.centroids"
+            :key="index"
+          >
+            <span
+              v-if="attempt.values[index] || attempt.progress.notes[index]"
+              class="poly-label"
+              :class="{ given: attempt.givens[index] !== 0 }"
+              :style="{
+                left: `${center[0] * tileScale}px`,
+                top: `${center[1] * tileScale}px`,
+              }"
+              aria-hidden="true"
+            >
+              <span
+                v-if="attempt.values[index]"
+                class="cell-value"
+                :class="`cell-value-${attempt.values[index]}`"
+                >{{ attempt.values[index] }}</span
+              >
+              <span v-else class="poly-notes">{{
+                noteValues(index)
+                  .filter((value) => value !== null)
+                  .join(" ")
+              }}</span>
+            </span>
+          </template>
+        </template>
         <div
-          v-for="(row, rowIndex) in rows"
+          v-for="(row, rowIndex) in polygonGeometry ? [] : rows"
           :key="rowIndex"
           role="row"
           class="board-row"

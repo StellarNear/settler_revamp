@@ -12,6 +12,7 @@ const settings: LocalSettings = {
   maxRegionSize: 9,
   difficulty: "EASY",
   playerTag: "",
+  shape: "SQUARE",
 };
 // Presentation-only snapshots: never used to assert generation, solving or persistence.
 function fixture(columns: number, rows: number) {

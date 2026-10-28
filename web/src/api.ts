@@ -1,6 +1,18 @@
 import { z } from "zod";
 
 const integer = z.number().int().safe().nonnegative();
+export const tileShapes = [
+  "SQUARE",
+  "HEXAGON",
+  "TRIANGLE",
+  "PENTAGON",
+] as const;
+export type TileShape = (typeof tileShapes)[number];
+/** Records and settings saved before tile shapes existed were square. */
+export const tileShapeSchema = z
+  .enum(tileShapes)
+  .nullish()
+  .transform((shape): TileShape => shape ?? "SQUARE");
 export const bootstrapSchema = z.strictObject({
   apiVersion: z.literal("v1"),
   processInstanceId: z.uuid(),
@@ -73,6 +85,19 @@ export const attemptSchema = z
     editorLeaseExpiresAt: z.iso.datetime({ offset: true }).nullable(),
     moveCount: integer,
     progress: progressSchema,
+    puzzleSettings: z
+      .object({
+        maxRegionSize: integer.min(1).max(9),
+        difficulty: z.enum(["EASY", "MEDIUM", "HARD"]),
+        shape: tileShapeSchema,
+      })
+      .nullable()
+      .default(null),
+    cellPolygons: z
+      .array(z.array(z.number().finite()).min(6).max(12))
+      .max(240)
+      .nullable()
+      .default(null),
   })
   .superRefine((attempt, context) => {
     const cells = attempt.columns * attempt.rows;
@@ -88,6 +113,13 @@ export const attemptSchema = z
       context.addIssue({
         code: "custom",
         message: "Board dimensions and arrays must agree",
+      });
+      return;
+    }
+    if (attempt.cellPolygons && attempt.cellPolygons.length !== cells) {
+      context.addIssue({
+        code: "custom",
+        message: "Tile geometry must cover every cell",
       });
       return;
     }
@@ -193,6 +225,7 @@ export const generationSchema = z
     maxRegionSize: integer.min(5).max(9),
     difficulty: z.enum(["EASY", "MEDIUM", "HARD"]),
     seed: z.number().int().safe(),
+    shape: z.enum(tileShapes),
   })
   .refine(
     (value) => value.columns * value.rows <= 240,

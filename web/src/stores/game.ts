@@ -12,7 +12,12 @@ import {
   loadBootstrap,
   request,
 } from "../api";
-import type { AttemptSnapshot, Bootstrap, GenerationJob } from "../api";
+import type {
+  AttemptSnapshot,
+  Bootstrap,
+  GenerationJob,
+  TileShape,
+} from "../api";
 import type { CommandType } from "../api";
 
 const sessionKey = "tiwanaku.editorSessionId";
@@ -30,6 +35,7 @@ export const useGameStore = defineStore("game", () => {
   const preset = ref("7x5");
   const maxRegionSize = ref(5);
   const difficulty = ref("EASY");
+  const shape = ref<TileShape>("SQUARE");
   const statusMessage = ref("Connect to the local game server.");
   const errorMessage = ref("");
   const connected = ref(false);
@@ -327,6 +333,7 @@ export const useGameStore = defineStore("game", () => {
             maxRegionSize: maxRegionSize.value,
             difficulty: difficulty.value,
             seed: crypto.getRandomValues(new Uint32Array(1))[0],
+            shape: shape.value,
           }),
         },
       );
@@ -627,6 +634,7 @@ export const useGameStore = defineStore("game", () => {
     preset,
     maxRegionSize,
     difficulty,
+    shape,
     statusMessage,
     errorMessage,
     connected,

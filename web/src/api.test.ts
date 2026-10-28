@@ -28,6 +28,12 @@ export const fixture = {
   editorLeaseExpiresAt: "2026-10-27T15:00:00Z",
   moveCount: 0,
   progress: initialProgress,
+  puzzleSettings: {
+    maxRegionSize: 5,
+    difficulty: "EASY" as const,
+    shape: "SQUARE" as const,
+  },
+  cellPolygons: null,
 };
 
 describe("v1 HTTP contracts", () => {

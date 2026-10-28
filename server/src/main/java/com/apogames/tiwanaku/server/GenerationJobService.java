@@ -5,6 +5,7 @@ import com.apogames.tiwanaku.engine.GeneratedPuzzle;
 import com.apogames.tiwanaku.engine.GenerationSpec;
 import com.apogames.tiwanaku.engine.GenerationStatus;
 import com.apogames.tiwanaku.engine.PuzzleGenerator;
+import com.apogames.tiwanaku.engine.TileShape;
 import com.apogames.tiwanaku.engine.SearchTermination;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -52,6 +53,7 @@ public final class GenerationJobService implements AutoCloseable {
         GenerationSpec spec;
         try {
             spec = new GenerationSpec(
+                    shapeOf(request),
                     request.columns(),
                     request.rows(),
                     request.maxRegionSize(),
@@ -65,8 +67,8 @@ public final class GenerationJobService implements AutoCloseable {
             throw ApiException.badRequest(exception.getMessage());
         }
         jobs.put(id, job);
-        LOGGER.info("Generation submitted job={} board={}x{} maxRegion={} difficulty={} seed={}",
-                id, request.columns(), request.rows(), request.maxRegionSize(),
+        LOGGER.info("Generation submitted job={} shape={} board={}x{} maxRegion={} difficulty={} seed={}",
+                id, shapeOf(request), request.columns(), request.rows(), request.maxRegionSize(),
                 request.difficulty(), request.seed());
         try {
             executor.execute(() -> run(job, spec));
@@ -108,7 +110,12 @@ public final class GenerationJobService implements AutoCloseable {
         result(id);
         var request = jobs.get(id).request;
         return new HistoryEntry.PuzzleSettings(request.columns(), request.rows(), request.maxRegionSize(),
-                request.difficulty().name(), Long.toString(request.seed()), "exact-cover-v1", "localhost-generator-v1");
+                request.difficulty().name(), Long.toString(request.seed()), "exact-cover-v1", "localhost-generator-v1",
+                shapeOf(request).name());
+    }
+
+    private static TileShape shapeOf(GenerationRequest request) {
+        return request.shape() == null ? TileShape.SQUARE : request.shape();
     }
 
     private void run(Job job, GenerationSpec spec) {

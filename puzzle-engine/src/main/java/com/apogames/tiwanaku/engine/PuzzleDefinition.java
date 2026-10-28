@@ -10,11 +10,16 @@ public final class PuzzleDefinition {
 
     private final int columns;
     private final int rows;
+    private final Topology topology;
     private final int[] regionIds;
     private final int[] givens;
     private final int[] regionSizes;
 
     public PuzzleDefinition(int columns, int rows, int[] regionIds, int[] givens) {
+        this(TileShape.SQUARE, columns, rows, regionIds, givens);
+    }
+
+    public PuzzleDefinition(TileShape shape, int columns, int rows, int[] regionIds, int[] givens) {
         if (columns <= 0 || rows <= 0 || (long) columns * rows > MAX_CELLS) {
             throw new IllegalArgumentException("Board dimensions must contain between 1 and 240 cells");
         }
@@ -25,6 +30,7 @@ public final class PuzzleDefinition {
 
         this.columns = columns;
         this.rows = rows;
+        this.topology = Topology.of(shape, columns, rows);
         this.regionIds = regionIds.clone();
         this.givens = givens.clone();
         this.regionSizes = validateAndCountRegions();
@@ -67,15 +73,12 @@ public final class PuzzleDefinition {
             while (!pending.isEmpty()) {
                 int current = pending.remove();
                 reached++;
-                int x = current % columns;
-                int y = current / columns;
-                visitNeighbor(current - 1, x > 0, regionId, visited, pending);
-                visitNeighbor(current + 1, x + 1 < columns, regionId, visited, pending);
-                visitNeighbor(current - columns, y > 0, regionId, visited, pending);
-                visitNeighbor(current + columns, y + 1 < rows, regionId, visited, pending);
+                for (int neighbor : topology.regionNeighbors(current)) {
+                    visitNeighbor(neighbor, true, regionId, visited, pending);
+                }
             }
             if (reached != regionSizes[regionId]) {
-                throw new IllegalArgumentException("Each region must be orthogonally connected");
+                throw new IllegalArgumentException("Each region must be connected through shared sides");
             }
         }
     }
@@ -118,6 +121,14 @@ public final class PuzzleDefinition {
         return rows;
     }
 
+    public TileShape shape() {
+        return topology.shape();
+    }
+
+    public Topology topology() {
+        return topology;
+    }
+
     public int cellCount() {
         return regionIds.length;
     }
@@ -152,7 +163,7 @@ public final class PuzzleDefinition {
 
     @Override
     public String toString() {
-        return "PuzzleDefinition[" + columns + "x" + rows + ", regions="
+        return "PuzzleDefinition[" + topology.shape() + " " + columns + "x" + rows + ", regions="
                 + regionSizes.length + ", givens=" + Arrays.toString(givens) + "]";
     }
 }

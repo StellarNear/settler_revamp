@@ -12,6 +12,7 @@ const settings = {
   maxRegionSize: 5,
   difficulty: "EASY",
   playerTag: "",
+  shape: "SQUARE",
 };
 const fetchMock = vi.fn<typeof fetch>();
 beforeEach(() => {

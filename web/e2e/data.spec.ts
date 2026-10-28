@@ -115,26 +115,20 @@ test("legacy preview/import/filter/edit/export/delete retains raw data and repor
   ).toBeVisible();
   const playerFilter = page.locator(".history-filters select").first();
   await playerFilter.selectOption("<old>");
-  await page
-    .getByRole("button", { name: "Apply filters", exact: true })
-    .click();
   await expect(page.locator(".history-summary")).toContainText("1 results");
   await playerFilter.selectOption("");
-  await page.getByLabel("Board filter", { exact: true }).fill("P05-LEGACY");
   await page
-    .getByRole("button", { name: "Apply filters", exact: true })
-    .click();
+    .getByLabel("Board filter", { exact: true })
+    .selectOption("P05-LEGACY");
   await expect(page.locator(".history-summary")).toContainText("2 results");
-  await expect(page.locator(".history-summary")).toContainText(
-    "Total time: 3 s across 2 timed records",
-  );
-  await expect(page.locator(".history-summary")).toContainText("70.00%");
+  await expect(page.locator(".history-summary")).toContainText("3 s");
+  await expect(page.locator(".history-summary")).toContainText("70.0%");
   await expect(
     page.locator(".history-table .saved-player").filter({ hasText: "<old>" }),
   ).toBeVisible();
-  await expect(
-    page.locator(".history-table tbody tr").first().locator("td").nth(2),
-  ).toHaveText("Legacy clicks");
+  await expect(page.locator(".history-table thead")).not.toContainText(
+    "Method",
+  );
   const originalDownload = page.waitForEvent("download");
   await page
     .getByRole("button", {
@@ -155,10 +149,12 @@ test("legacy preview/import/filter/edit/export/delete retains raw data and repor
   expect(archive.checksum).toHaveLength(64);
   expect(archive.payload).toContain("P05-LEGACY");
   const row = page.locator(".history-table tbody tr").first();
-  await row.getByLabel("New player tag", { exact: true }).fill("xy");
+  await row.locator(".saved-player").click();
   await row
-    .getByRole("button", { name: "Save player tag", exact: true })
-    .click();
+    .getByLabel("Player for this result", { exact: true })
+    .selectOption("__new__");
+  await row.getByLabel("New player tag", { exact: true }).fill("xy");
+  await row.getByRole("button", { name: "Add", exact: true }).click();
   await expect(
     page.locator(".saved-player").filter({ hasText: "XY" }),
   ).toHaveCount(1);
@@ -204,10 +200,9 @@ test("legacy preview/import/filter/edit/export/delete retains raw data and repor
   ).toBeVisible();
   await expect(page.locator(".history-summary")).toContainText("1 results");
   await page.reload();
-  await page.getByLabel("Board filter", { exact: true }).fill("P05-LEGACY");
   await page
-    .getByRole("button", { name: "Apply filters", exact: true })
-    .click();
+    .getByLabel("Board filter", { exact: true })
+    .selectOption("P05-LEGACY");
   await expect(page.locator(".history-summary")).toContainText("1 results");
 });
 

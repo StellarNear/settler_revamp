@@ -3,6 +3,8 @@ import { useRouter } from "vue-router";
 import { computed } from "vue";
 import { useGameStore } from "../stores/game";
 import { useDataStore } from "../stores/data";
+import { tileShapes } from "../api";
+import { shapeLabels } from "../shapes";
 const game = useGameStore();
 const router = useRouter();
 const data = useDataStore();
@@ -28,6 +30,14 @@ async function generate() {
         <option value="9x5">Big · 9 × 5</option>
         <option value="15x10">Uber · 15 × 10</option>
         <option value="20x12">Titan · 20 × 12</option>
+      </select></label
+    >
+    <label
+      ><span>TILES</span
+      ><select v-model="game.shape" :disabled="choicesLocked">
+        <option v-for="shape in tileShapes" :key="shape" :value="shape">
+          {{ shapeLabels[shape] }}
+        </option>
       </select></label
     >
     <label
