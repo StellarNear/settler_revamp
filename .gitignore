@@ -126,5 +126,5 @@ Thumbs.db
 /web/test-results/
 /web/playwright-report/
 
-puzzle-engine/target/*
+/puzzle-engine/target/
 
