@@ -130,6 +130,47 @@ class PuzzleGeneratorTest {
     }
 
     @Test
+    void squareRegionBordersRunInBothDirectionsWithoutStraightBars() {
+        int horizontal = 0;
+        int vertical = 0;
+        int bars = 0;
+        int regions = 0;
+        for (long seed = 0; seed < 4; seed++) {
+            GeneratedPuzzle result = new PuzzleGenerator().generate(new GenerationSpec(
+                    20, 12, 5, Difficulty.EASY, seed,
+                    200, 2_000_000, Duration.ofSeconds(30), new CancellationToken()));
+            assertEquals(GenerationStatus.GENERATED, result.status(), "seed " + seed);
+            int[] ids = result.puzzle().regionIds();
+            for (int cell = 0; cell < ids.length; cell++) {
+                if (cell % 20 < 19 && ids[cell] != ids[cell + 1]) {
+                    vertical++;
+                }
+                if (cell + 20 < ids.length && ids[cell] != ids[cell + 20]) {
+                    horizontal++;
+                }
+            }
+            for (int region = 0; region < result.puzzle().regionCount(); region++) {
+                java.util.Set<Integer> xs = new java.util.HashSet<>();
+                java.util.Set<Integer> ys = new java.util.HashSet<>();
+                for (int cell = 0; cell < ids.length; cell++) {
+                    if (ids[cell] == region) {
+                        xs.add(cell % 20);
+                        ys.add(cell / 20);
+                    }
+                }
+                regions++;
+                if (xs.size() + ys.size() > 2 && (xs.size() == 1 || ys.size() == 1)) {
+                    bars++;
+                }
+            }
+        }
+        assertTrue(horizontal > 0 && vertical > 0);
+        double ratio = (horizontal / (20.0 * 11)) / (vertical / (19.0 * 12));
+        assertTrue(ratio > 0.7 && ratio < 1.4, "horizontal/vertical border ratio " + ratio);
+        assertTrue(bars * 10 < regions, bars + " straight bars out of " + regions + " regions");
+    }
+
+    @Test
     void neverCertifiesWhenTheGlobalNodeBudgetIsExhausted() {
         GeneratedPuzzle result = new PuzzleGenerator().generate(new GenerationSpec(
                 7, 5, 5, Difficulty.EASY, 0,

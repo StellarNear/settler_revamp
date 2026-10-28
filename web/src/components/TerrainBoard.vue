@@ -16,18 +16,20 @@ const props = defineProps<{
   selected?: number;
   disabled: boolean;
   reducedDetail: boolean;
+  wheelNotes?: Record<number, number>;
 }>();
 const emit = defineEmits<{
   select: [index: number, event: MouseEvent];
   secondary: [index: number];
   focusCell: [index: number];
+  note: [index: number, direction: 1 | -1];
 }>();
 const id = useId().replace(/:/g, "");
 const viewport = ref<HTMLDivElement>();
 const board = ref<HTMLDivElement>();
 const sheet = ref<HTMLDivElement>();
 const size = ref(44);
-const fitted = ref(false);
+const fitted = ref(true);
 const available = ref(0);
 const availableHeight = ref(0);
 const fullscreen = ref(false);
@@ -137,19 +139,26 @@ function syncFullscreen() {
 watch(
   () => props.attempt.attemptId,
   () => {
-    fitted.value = false;
+    fitted.value = true;
     size.value = 44;
   },
 );
-function noteValues(index: number) {
-  const mask = props.attempt.progress.notes[index];
-  return Array.from({ length: 9 }, (_, i) => (mask & (1 << i) ? i + 1 : null));
+let wheelTravel = 0;
+/** One note step per wheel notch; small trackpad deltas accumulate first. */
+function wheel(index: number, event: WheelEvent) {
+  if (props.disabled || event.ctrlKey || props.attempt.givens[index] !== 0)
+    return;
+  event.preventDefault();
+  const delta = event.deltaMode === 1 ? event.deltaY * 33 : event.deltaY;
+  if (Math.abs(delta) >= 40) wheelTravel = delta;
+  else wheelTravel += delta;
+  if (Math.abs(wheelTravel) < 40) return;
+  emit("note", index, wheelTravel < 0 ? 1 : -1);
+  wheelTravel = 0;
 }
 function label(index: number) {
   const current = props.attempt;
-  const notes = noteValues(index)
-    .filter((value) => value !== null)
-    .join(", ");
+  const notes = props.wheelNotes?.[index] ?? "";
   const position = current.cellPolygons
     ? `Tile ${index + 1}`
     : `Row ${Math.floor(index / current.columns) + 1}, column ${(index % current.columns) + 1}`;
@@ -426,6 +435,7 @@ defineExpose({ focus, selectedBiome });
               @focus="emit('focusCell', index)"
               @click="tileClick(index, $event)"
               @contextmenu.prevent="tileSecondary(index)"
+              @wheel="wheel(index, $event)"
             />
           </svg>
           <template
@@ -433,7 +443,7 @@ defineExpose({ focus, selectedBiome });
             :key="index"
           >
             <span
-              v-if="attempt.values[index] || attempt.progress.notes[index]"
+              v-if="attempt.values[index] || wheelNotes?.[index]"
               class="poly-label"
               :class="{ given: attempt.givens[index] !== 0 }"
               :style="{
@@ -448,10 +458,8 @@ defineExpose({ focus, selectedBiome });
                 :class="`cell-value-${attempt.values[index]}`"
                 >{{ attempt.values[index] }}</span
               >
-              <span v-else class="poly-notes">{{
-                noteValues(index)
-                  .filter((value) => value !== null)
-                  .join(" ")
+              <span v-if="wheelNotes?.[index]" class="wheel-note">{{
+                wheelNotes[index]
               }}</span>
             </span>
           </template>
@@ -483,6 +491,7 @@ defineExpose({ focus, selectedBiome });
               @focus="emit('focusCell', index)"
               @click="emit('select', index, $event)"
               @contextmenu.prevent="emit('secondary', index)"
+              @wheel="wheel(index, $event)"
             >
               <span
                 v-if="attempt.values[index]"
@@ -490,11 +499,9 @@ defineExpose({ focus, selectedBiome });
                 :class="`cell-value-${attempt.values[index]}`"
                 >{{ attempt.values[index] }}</span
               >
-              <span v-else class="manual-notes"
-                ><span v-for="(value, slot) in noteValues(index)" :key="slot">{{
-                  value
-                }}</span></span
-              >
+              <span v-if="wheelNotes?.[index]" class="wheel-note">{{
+                wheelNotes[index]
+              }}</span>
               <span
                 v-if="attempt.progress.conflicts.includes(index)"
                 class="conflict-mark"

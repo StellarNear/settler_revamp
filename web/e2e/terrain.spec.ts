@@ -137,6 +137,10 @@ test("all seven presets retain readable cells at desktop and 390px, with aligned
       [20, 12],
     ]) {
       await show(page, columns, rows);
+      expect((await alignment(page)).scrolls).toBe(false);
+      await page
+        .getByRole("button", { name: "Readable size", exact: true })
+        .click();
       const readable = await alignment(page);
       expect(readable.size).toBe(44);
       if (width === 390 && columns >= 9) expect(readable.scrolls).toBe(true);
@@ -183,27 +187,20 @@ test("keyboard has one roving stop, row endpoints, exit, fixed-clue discovery, a
   expect(await page.locator('.cell[tabindex="0"]').count()).toBe(1);
   await page.keyboard.press("Tab");
   await expect(cells.nth(9)).not.toBeFocused();
-  await cells.nth(9).focus();
-  await page.keyboard.press("n");
-  await expect(page.getByLabel("Manual notes", { exact: false })).toBeChecked();
-  await page.keyboard.press("Escape");
-  await expect(
-    page.getByLabel("Manual notes", { exact: false }),
-  ).not.toBeChecked();
-  await page.getByLabel("Manual notes", { exact: false }).focus();
-  await page.keyboard.press("n");
-  await expect(
-    page.getByLabel("Manual notes", { exact: false }),
-  ).not.toBeChecked();
-  await page.getByLabel("Manual notes", { exact: false }).check();
-  await page.keyboard.press("Escape");
-  await expect(
-    page.getByLabel("Manual notes", { exact: false }),
-  ).not.toBeChecked();
+  await expect(page.getByLabel("Manual notes", { exact: false })).toHaveCount(
+    0,
+  );
   let commands = 0;
   page.on("request", (request) => {
     if (request.url().endsWith("/commands")) commands++;
   });
+  await cells.nth(9).hover();
+  await page.mouse.wheel(0, -100);
+  await expect(cells.nth(9).locator(".wheel-note")).toHaveText("1");
+  await expect(cells.nth(9)).toHaveAccessibleName(/notes 1/);
+  await cells.first().hover();
+  await page.mouse.wheel(0, -100);
+  await expect(cells.first().locator(".wheel-note")).toHaveCount(0);
   await page.evaluate(() => {
     const input = document.createElement("input");
     input.id = "shortcut-test";
@@ -234,7 +231,9 @@ async function scaled(browser: Browser, dpr: number, zoom: number) {
     document.documentElement.style.zoom = String(scale);
   }, zoom);
   await alignment(page);
-  await page.getByRole("button", { name: "Fit overview", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Readable size", exact: true })
+    .click();
   await alignment(page);
   await context.close();
 }
@@ -282,7 +281,7 @@ test("fullscreen expands the board for play and exits cleanly", async ({
   ).toBeVisible();
 });
 
-test("deterministic concave/hole terrain, notes 1–9, all themes and reduced detail stay legible", async ({
+test("deterministic concave/hole terrain, all themes and reduced detail stay legible", async ({
   page,
 }, testInfo) => {
   for (const theme of ["light", "dark", "high-contrast"] as const) {
@@ -307,29 +306,11 @@ test("deterministic concave/hole terrain, notes 1–9, all themes and reduced de
       .locator(".terrain-region[data-region='4']")
       .getAttribute("data-biome");
     expect(innerBiome).not.toBe(outerBiome);
-    const notes = page.locator(".cell").nth(34).locator(".manual-notes");
-    expect(await notes.locator("span").allTextContents()).toEqual([
-      "1",
-      "2",
-      "3",
-      "4",
-      "5",
-      "6",
-      "7",
-      "8",
-      "9",
-    ]);
     await expect(page.locator(".cell").nth(11)).toHaveAccessibleName(
-      /notes 1, conflict/,
+      /empty, conflict/,
     );
-    await page.locator(".cell").nth(34).focus();
-    expect(
-      await notes.evaluate((element) =>
-        parseFloat(getComputedStyle(element).fontSize),
-      ),
-    ).toBeGreaterThanOrEqual(10);
     const contrast = await page
-      .locator(".cell-value,.manual-notes")
+      .locator(".cell-value")
       .evaluateAll((elements) => {
         function luminance(color: string) {
           const values = color

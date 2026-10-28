@@ -27,6 +27,10 @@ public final class GenerationJobService implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger(GenerationJobService.class);
     private static final int MAX_RETAINED_JOBS = 128;
     private static final Duration JOB_RETENTION = Duration.ofHours(1);
+    // Successful boards need at most ~300k nodes; a try beyond this is an unlucky seed, so move on to the next.
+    private static final long NODES_PER_TRY = 600_000;
+    private static final int RETRY_TIME_FACTOR = 3;
+    private static final Duration MIN_RETRY_TIME = Duration.ofSeconds(2);
 
     private final PuzzleGenerator generator = new PuzzleGenerator();
     private final ThreadPoolExecutor executor = new ThreadPoolExecutor(
@@ -60,7 +64,7 @@ public final class GenerationJobService implements AutoCloseable {
                     request.difficulty(),
                     request.seed(),
                     200,
-                    2_000_000,
+                    NODES_PER_TRY,
                     Duration.ofSeconds(request.columns() * request.rows() > 45 ? 30 : 10),
                     job.cancellationToken);
         } catch (IllegalArgumentException exception) {
@@ -110,7 +114,7 @@ public final class GenerationJobService implements AutoCloseable {
         result(id);
         var request = jobs.get(id).request;
         return new HistoryEntry.PuzzleSettings(request.columns(), request.rows(), request.maxRegionSize(),
-                request.difficulty().name(), Long.toString(request.seed()), "exact-cover-v1", "localhost-generator-v1",
+                request.difficulty().name(), Long.toString(jobs.get(id).seed), "exact-cover-v1", "localhost-generator-v1",
                 shapeOf(request).name());
     }
 
@@ -121,10 +125,28 @@ public final class GenerationJobService implements AutoCloseable {
     private void run(Job job, GenerationSpec spec) {
         job.startedAt = Instant.now();
         try {
-            GeneratedPuzzle result = generator.generate(spec, job::reportProgress);
+            // Unlucky seeds can exhaust the search budget; retry with derived seeds until the overall deadline.
+            Instant deadline = job.startedAt.plus(spec.timeout().multipliedBy(RETRY_TIME_FACTOR));
+            GeneratedPuzzle result;
+            while (true) {
+                result = generator.generate(spec, job::reportProgress);
+                Duration left = Duration.between(Instant.now(), deadline);
+                if (result.status() == GenerationStatus.GENERATED
+                        || job.cancellationRequested
+                        || left.compareTo(MIN_RETRY_TIME) < 0) {
+                    break;
+                }
+                LOGGER.info("Generation retry job={} try={} previousStatus={} termination={}",
+                        job.id, job.tryNumber + 1, result.status(), result.termination());
+                long seed = job.request.seed() ^ (job.tryNumber * 0x9E3779B97F4A7C15L);
+                spec = new GenerationSpec(spec.shape(), spec.columns(), spec.rows(), spec.maxRegionSize(),
+                        spec.difficulty(), seed, spec.maxPartitionAttempts(), spec.maxSearchNodes(),
+                        left.compareTo(spec.timeout()) < 0 ? left : spec.timeout(), job.cancellationToken);
+                job.nextTry(seed);
+            }
             job.complete(result);
-            LOGGER.info("Generation ended job={} status={} termination={} elapsedMs={} nodes={}",
-                    job.id, job.snapshot().status(), result.termination(),
+            LOGGER.info("Generation ended job={} status={} termination={} tries={} elapsedMs={} nodes={}",
+                    job.id, job.snapshot().status(), result.termination(), job.tryNumber,
                     job.snapshot().elapsedMillis(), result.visitedNodes());
         } catch (RuntimeException exception) {
             LOGGER.error("Generation job {} failed", job.id, exception);
@@ -163,10 +185,19 @@ public final class GenerationJobService implements AutoCloseable {
         private volatile Instant startedAt;
         private volatile Instant completedAt;
         private volatile int progressPercent;
+        private volatile int tryNumber = 1;
+        private volatile long seed;
 
         private Job(UUID id, GenerationRequest request) {
             this.id = id;
             this.request = request;
+            this.seed = request.seed();
+        }
+
+        private void nextTry(long nextSeed) {
+            seed = nextSeed;
+            tryNumber++;
+            progressPercent = 0;
         }
 
         private void reportProgress(int percent) {
@@ -200,7 +231,7 @@ public final class GenerationJobService implements AutoCloseable {
             String visibleStatus = cancellationRequested && completedAt == null ? "CANCELLING" : status;
             return new JobSnapshot(id, visibleStatus, termination == null ? null : termination.name(),
                     error, elapsedMillis, result == null ? 0 : result.visitedNodes(),
-                    "GENERATED".equals(status) ? 100 : progressPercent);
+                    "GENERATED".equals(status) ? 100 : progressPercent, tryNumber);
         }
     }
 
@@ -211,6 +242,7 @@ public final class GenerationJobService implements AutoCloseable {
             String error,
             long elapsedMillis,
             long visitedNodes,
-            int progressPercent) {
+            int progressPercent,
+            int tryNumber) {
     }
 }

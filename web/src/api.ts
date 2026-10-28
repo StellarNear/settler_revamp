@@ -45,6 +45,7 @@ export const jobSchema = z.strictObject({
   elapsedMillis: integer,
   visitedNodes: integer,
   progressPercent: integer.max(100).default(0),
+  tryNumber: integer.min(1).default(1),
 });
 export const progressSchema = z.strictObject({
   notes: z.array(integer.max(511)).min(1).max(240),

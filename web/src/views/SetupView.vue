@@ -63,7 +63,7 @@ async function generate() {
     >
       {{
         game.pending
-          ? `WORKING... ${game.job?.progressPercent ?? 0}%`
+          ? `WORKING... ${game.job?.progressPercent ?? 0}% · ${Math.floor((game.job?.elapsedMillis ?? 0) / 1000)}s${(game.job?.tryNumber ?? 1) > 1 ? ` · try ${game.job?.tryNumber}` : ""}`
           : "GENERATE PUZZLE"
       }}
     </button>

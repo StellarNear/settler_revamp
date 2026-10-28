@@ -107,19 +107,30 @@ watch(
 
 function select(index: number, event: MouseEvent) {
   game.selectedCell = index;
-  if (game.cycleMode && event.detail > 0) void game.cycleValue(1);
+  if (game.cycleMode && event.detail > 0) {
+    game.clearWheelNote(index);
+    void game.cycleValue(1);
+  }
 }
 function secondary(index: number) {
   game.selectedCell = index;
-  if (game.cycleMode) void game.cycleValue(-1);
+  if (game.cycleMode) {
+    game.clearWheelNote(index);
+    void game.cycleValue(-1);
+  }
 }
+const confetti = Array.from({ length: 36 }, (_, index) => ({
+  left: `${(index * 37) % 100}%`,
+  delay: `${(index % 9) * 0.12}s`,
+  duration: `${2.2 + (index % 5) * 0.35}s`,
+  color: ["#f4c8bd", "#efe0a5", "#bfe0ce", "#c4deec", "#e0cbe5", "#ffb703"][
+    index % 6
+  ],
+  turn: `${index % 2 ? "" : "-"}${360 + (index % 4) * 180}deg`,
+}));
 async function onKeydown(event: KeyboardEvent) {
   if (event.target instanceof HTMLElement && event.target.closest("dialog"))
     return;
-  if (event.key === "Escape") {
-    game.noteMode = false;
-    return;
-  }
   if (
     event.target instanceof HTMLElement &&
     (event.target.matches("input,select,textarea") ||
@@ -129,13 +140,12 @@ async function onKeydown(event: KeyboardEvent) {
   if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
   if (/^[1-9]$/.test(event.key)) {
     event.preventDefault();
+    game.clearWheelNote(game.selectedCell);
     void game.enterValue(Number(event.key));
   } else if (["Backspace", "Delete", "0"].includes(event.key)) {
     event.preventDefault();
+    game.clearWheelNote(game.selectedCell);
     void game.command("SET_VALUE", 0);
-  } else if (event.key.toLowerCase() === "n") {
-    event.preventDefault();
-    game.noteMode = !game.noteMode;
   } else if (
     (event.key.startsWith("Arrow") || ["Home", "End"].includes(event.key)) &&
     game.attempt
@@ -278,9 +288,11 @@ onUnmounted(() => {
             game.attempt.status === 'COMPLETED'
           "
           :reduced-detail="data.settings?.reducedDetail ?? false"
+          :wheel-notes="game.wheelNotes"
           @select="select"
           @secondary="secondary"
           @focus-cell="game.selectedCell = $event"
+          @note="game.stepWheelNote"
         >
           <template #hud>
             <dl class="hud" aria-label="Game information">
@@ -357,10 +369,6 @@ onUnmounted(() => {
           <button @click="help?.showModal()">Rules and keyboard help</button>
           <div class="play-toolbar">
             <label
-              ><input v-model="game.noteMode" type="checkbox" />Manual notes
-              (N)</label
-            >
-            <label
               ><input v-model="game.cycleMode" type="checkbox" />Click to change
               cycle (left + / right −)</label
             >
@@ -394,8 +402,9 @@ onUnmounted(() => {
             {{ game.attempt.progress.wrongEntryCount }} noncanonical entries.
           </p>
           <p>
-            Digits enter values; Delete clears; arrows move selection. Select a
-            given to inspect it; it cannot be edited.
+            Left/right click changes a value. Mouse wheel over a cell writes a
+            note that does not count as a click. Digits enter values; Delete
+            clears; arrows move selection.
           </p>
         </aside>
       </div>
@@ -405,7 +414,21 @@ onUnmounted(() => {
         aria-labelledby="win-title"
         @click.self="win?.close()"
       >
+        <div class="win-confetti" aria-hidden="true">
+          <i
+            v-for="(piece, index) in confetti"
+            :key="index"
+            :style="{
+              left: piece.left,
+              background: piece.color,
+              animationDelay: piece.delay,
+              animationDuration: piece.duration,
+              '--turn': piece.turn,
+            }"
+          ></i>
+        </div>
         <div class="win-card">
+          <div class="win-trophy" aria-hidden="true">★</div>
           <p class="win-kicker">Puzzle solved</p>
           <h2 id="win-title">Well played!</h2>
           <p class="win-board">
@@ -472,7 +495,9 @@ onUnmounted(() => {
         <p>
           Left-click a cell to increase its number, right-click to decrease.
           Digits also enter values; Delete, Backspace or 0 clears; arrows move.
-          N toggles manual notes; Escape exits note mode.
+          Scroll the mouse wheel over a cell to pencil a small note (up counts
+          up, down counts down); notes never count as clicks and vanish when you
+          click that cell.
         </p>
         <p>
           Large maps start with readable scrollable cells. Use Fit overview for

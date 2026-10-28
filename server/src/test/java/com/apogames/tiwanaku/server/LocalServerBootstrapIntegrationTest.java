@@ -164,6 +164,7 @@ class LocalServerBootstrapIntegrationTest {
         } while (!"GENERATED".equals(job.get("status")) && System.nanoTime() < deadline);
         assertEquals("GENERATED", job.get("status"));
         assertEquals(100, job.get("progressPercent"));
+        assertEquals(1, job.get("tryNumber"));
 
         String editor = UUID.randomUUID().toString();
         HttpResponse<String> createResponse = send(

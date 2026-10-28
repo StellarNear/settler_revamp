@@ -555,11 +555,12 @@ select {
 .cell-value {
   display: grid;
   place-items: center;
-  width: 48%;
-  min-width: 1em;
-  max-width: 1.05em;
-  aspect-ratio: 1;
+  /* Explicit equal sides: a thick clue ring must never stretch the circle into an oval. */
+  width: max(14px, calc(var(--cell-size) * 0.5));
+  height: max(14px, calc(var(--cell-size) * 0.5));
+  flex: none;
   box-sizing: border-box;
+  font-size: max(9px, calc(var(--cell-size) * 0.29));
   border: 1px solid #ffffffc9;
   border-radius: 50%;
   line-height: 1;
@@ -655,26 +656,6 @@ select {
   color: #fff;
   background: #97352e;
   padding: 0 3px;
-}
-.manual-notes {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  width: 82%;
-  height: 86%;
-  font-size: clamp(9px, calc(var(--cell-size) * 0.23), 15px);
-  font-weight: 600;
-  line-height: 1;
-  color: #24352f;
-  background: transparent;
-  border-radius: 2px;
-  pointer-events: none;
-}
-.manual-notes:has(span:not(:empty)) {
-  background: #faf7ef;
-}
-.manual-notes span {
-  display: grid;
-  place-items: center;
 }
 .terrain-layer {
   position: absolute;
@@ -786,12 +767,6 @@ select {
     0 2px 5px #25342845,
     inset 0 1px 0 #ffffff9e;
 }
-.poly-notes {
-  font-size: 0.45em;
-  background: #faf7efd9;
-  border-radius: 3px;
-  padding: 0 2px;
-}
 .reduced-terrain .biome-texture {
   display: none;
 }
@@ -814,8 +789,7 @@ select {
   stroke: #000;
   stroke-width: 0.12;
 }
-:root[data-theme="high-contrast"] .cell-value,
-:root[data-theme="high-contrast"] .manual-notes:has(span:not(:empty)) {
+:root[data-theme="high-contrast"] .cell-value {
   color: #000;
   background: #fff;
 }
@@ -991,10 +965,6 @@ select {
 :root[data-theme="dark"] .cell {
   color: #eef2e8;
 }
-:root[data-theme="dark"] .manual-notes:has(span:not(:empty)) {
-  color: #28362d;
-  background: #e3e5d9;
-}
 :root[data-theme="dark"] .cell-separators {
   stroke: #24352e;
   stroke-opacity: 0.4;
@@ -1156,9 +1126,28 @@ select {
 .rules-dialog::backdrop {
   background: #0008;
 }
+.wheel-note {
+  position: absolute;
+  top: 1px;
+  right: 3px;
+  z-index: 2;
+  color: #111;
+  font-size: max(9px, calc(var(--cell-size) * 0.26));
+  font-weight: 700;
+  line-height: 1;
+  text-shadow:
+    0 0 2px #fff,
+    0 0 3px #fff;
+  pointer-events: none;
+}
+.poly-label .wheel-note {
+  top: 4%;
+  right: 4%;
+}
 .win-dialog {
   width: min(460px, 92vw);
   padding: 0;
+  overflow: hidden;
   color: var(--text-color);
   background: var(--panel-background);
   border: 2px solid #ffb703;
@@ -1169,7 +1158,72 @@ select {
   background: #000a;
   backdrop-filter: blur(3px);
 }
+.win-dialog[open] {
+  animation: win-pop 520ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.win-confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.win-confetti i {
+  position: absolute;
+  top: -14px;
+  width: 8px;
+  height: 13px;
+  border-radius: 2px;
+  opacity: 0;
+  animation: win-confetti 2.6s ease-in 2 both;
+}
+.win-trophy {
+  justify-self: center;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  color: #3a2700;
+  font-size: 34px;
+  background: radial-gradient(circle at 35% 30%, #ffe08a, #ffb703 70%);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 6px #ffb70333,
+    0 10px 24px #ffb70355;
+  animation: win-trophy 1.6s ease-in-out 400ms infinite alternate;
+}
+@keyframes win-pop {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes win-confetti {
+  0% {
+    opacity: 1;
+    transform: translateY(0) rotate(0);
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(560px) rotate(var(--turn));
+  }
+}
+@keyframes win-trophy {
+  from {
+    transform: translateY(0) rotate(-6deg) scale(1);
+  }
+  to {
+    transform: translateY(-5px) rotate(6deg) scale(1.06);
+  }
+}
 .win-card {
+  position: relative;
   display: grid;
   gap: 14px;
   padding: 26px 28px;
@@ -1368,6 +1422,13 @@ footer {
   *::before,
   *::after {
     scroll-behavior: auto !important;
+  }
+  .win-dialog[open],
+  .win-trophy {
+    animation: none;
+  }
+  .win-confetti {
+    display: none;
   }
 }
 

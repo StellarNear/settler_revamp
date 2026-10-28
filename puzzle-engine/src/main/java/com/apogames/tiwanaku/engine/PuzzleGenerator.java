@@ -9,6 +9,8 @@ import java.util.function.IntConsumer;
 
 public final class PuzzleGenerator {
     private static final long PARTITION_SEARCH_NODE_LIMIT = 20_000;
+    private static final int SMALL_STRIP_REGION_PERCENT = 15;
+    private static final int SMALL_STRIP_REGION_MAX_CELLS = 60;
     private final ExactCoverSolver solver;
 
     public PuzzleGenerator() {
@@ -184,7 +186,8 @@ public final class PuzzleGenerator {
             SplittableRandom random) {
         int cellCount = spec.columns() * spec.rows();
         if (spec.columns() > 1 && spec.rows() > 1 && cellCount >= 8 && spec.maxRegionSize() < 8) {
-            return createSnakePartition(spec, random);
+            int[] strips = createStripPartition(spec, random);
+            return strips != null ? strips : createSnakePartition(spec, random);
         }
         int[] regionIds = new int[cellCount];
         java.util.Arrays.fill(regionIds, -1);
@@ -349,8 +352,99 @@ public final class PuzzleGenerator {
         return tail == expectedSize;
     }
 
-    private int[] createSnakePartition(GenerationSpec spec, SplittableRandom random) {
-        int cellCount = spec.columns() * spec.rows();
+    /**
+     * Splits the board into random rectangular blocks (a parquet), each cut into 2-cell-thick strips (plus
+     * one 3-cell strip for an odd depth) in its own random direction. Each strip is walked column by column
+     * in a zig-zag and cut into regions that never cross a strip, so regions are compact blocks, L and S
+     * shapes and straight borders stop at block edges. Returns null when a strip cannot be split.
+     */
+    private int[] createStripPartition(GenerationSpec spec, SplittableRandom random) {
+        List<int[]> blocks = new ArrayList<>();
+        splitBlocks(0, 0, spec.columns(), spec.rows(), random, blocks);
+        List<Integer> path = new ArrayList<>(spec.columns() * spec.rows());
+        List<Integer> stripEnds = new ArrayList<>();
+        for (int[] block : blocks) {
+            // Two-cell strips stay solvable under the king-move rule; a three-cell strip only fills an odd depth.
+            boolean transpose = block[2] % 2 == block[3] % 2 ? random.nextBoolean() : block[3] % 2 != 0;
+            int length = transpose ? block[3] : block[2];
+            int depth = transpose ? block[2] : block[3];
+            int thickStrip = depth % 2 == 0 ? -1 : random.nextInt(depth / 2);
+            for (int start = 0, strip = 0; start < depth; strip++) {
+                int thickness = strip == thickStrip ? 3 : 2;
+                boolean backwards = random.nextBoolean();
+                boolean upwards = random.nextBoolean();
+                for (int step = 0; step < length; step++) {
+                    int along = backwards ? length - 1 - step : step;
+                    for (int k = 0; k < thickness; k++) {
+                        int across = start + (upwards == (step % 2 == 0) ? thickness - 1 - k : k);
+                        int x = block[0] + (transpose ? across : along);
+                        int y = block[1] + (transpose ? along : across);
+                        path.add(y * spec.columns() + x);
+                    }
+                }
+                stripEnds.add(path.size());
+                start += thickness;
+            }
+        }
+        int cellCount = path.size();
+        int[] stripEndAt = new int[cellCount];
+        for (int position = 0, strip = 0; position < cellCount; position++) {
+            if (position >= stripEnds.get(strip)) {
+                strip++;
+            }
+            stripEndAt[position] = stripEnds.get(strip);
+        }
+        // Small boards (where reshaping has little room) sometimes get 2-3 cell regions for variety.
+        int minimumSize = cellCount <= SMALL_STRIP_REGION_MAX_CELLS ? 2 : 4;
+        boolean[] finishable = new boolean[cellCount + 1];
+        finishable[cellCount] = true;
+        for (int position = cellCount - 1; position >= 0; position--) {
+            for (int size = minimumSize; size <= spec.maxRegionSize() && position + size <= stripEndAt[position]; size++) {
+                finishable[position] |= finishable[position + size];
+            }
+        }
+        if (!finishable[0]) {
+            return null;
+        }
+        int[] regionIds = new int[cellCount];
+        int region = 0;
+        for (int position = 0; position < cellCount; region++) {
+            int smallest = minimumSize < 4 && random.nextInt(100) < SMALL_STRIP_REGION_PERCENT ? minimumSize : 4;
+            List<Integer> sizes = new ArrayList<>();
+            for (int size = smallest; sizes.isEmpty() && size >= minimumSize; size -= 2) {
+                for (int s = size; s <= spec.maxRegionSize() && position + s <= stripEndAt[position]; s++) {
+                    if (finishable[position + s]) {
+                        sizes.add(s);
+                    }
+                }
+            }
+            int size = sizes.get(random.nextInt(sizes.size()));
+            for (int offset = 0; offset < size; offset++) {
+                regionIds[path.get(position++)] = region;
+            }
+        }
+        return regionIds;
+    }
+
+    /** Recursively cuts a rectangle at even offsets (keeping parts at least 4 cells wide) into parquet blocks. */
+    private void splitBlocks(int x, int y, int width, int height, SplittableRandom random, List<int[]> blocks) {
+        boolean columns = width >= 8 && (height < 8 || width > height || (width == height && random.nextBoolean()));
+        int span = columns ? width : height;
+        if (span < 8 || width * height < 24 || random.nextInt(5) == 0) {
+            blocks.add(new int[]{x, y, width, height});
+            return;
+        }
+        int cut = 4 + 2 * random.nextInt((span - 8) / 2 + 1);
+        if (columns) {
+            splitBlocks(x, y, cut, height, random, blocks);
+            splitBlocks(x + cut, y, width - cut, height, random, blocks);
+        } else {
+            splitBlocks(x, y, width, cut, random, blocks);
+            splitBlocks(x, y + cut, width, height - cut, random, blocks);
+        }
+    }
+
+    private int[] createSnakePartition(GenerationSpec spec, SplittableRandom random) {        int cellCount = spec.columns() * spec.rows();
         boolean[] partitionable = new boolean[cellCount + 1];
         partitionable[0] = true;
         for (int count = 4; count <= cellCount; count++) {

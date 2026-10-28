@@ -1,4 +1,4 @@
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { defineStore } from "pinia";
 import {
   attemptSchema,
@@ -30,6 +30,73 @@ export const useGameStore = defineStore("game", () => {
   sessionStorage.setItem(sessionKey, editorSessionId);
   const bootstrap = ref<Bootstrap>();
   const attempt = ref<AttemptSnapshot>();
+  /** Mouse-wheel scratch notes: browser-only, never sent to Java, so they never count as clicks. */
+  const wheelNotes = ref<Record<number, number>>({});
+  const wheelNotesKey = (id: string) => `tiwanaku.wheelNotes.${id}`;
+  const notesStore: Storage | undefined =
+    typeof localStorage === "undefined" ? undefined : localStorage;
+  watch(
+    () => [attempt.value?.attemptId, attempt.value?.status] as const,
+    ([id, status]) => {
+      if (!id) {
+        wheelNotes.value = {};
+      } else if (status === "COMPLETED") {
+        notesStore?.removeItem(wheelNotesKey(id));
+        wheelNotes.value = {};
+      } else {
+        try {
+          const saved = JSON.parse(
+            notesStore?.getItem(wheelNotesKey(id)) ?? "{}",
+          ) as Record<string, unknown>;
+          wheelNotes.value = Object.fromEntries(
+            Object.entries(saved).filter(
+              ([cell, value]) =>
+                Number.isInteger(Number(cell)) &&
+                Number.isInteger(value) &&
+                (value as number) > 0 &&
+                (value as number) <= 9,
+            ),
+          ) as Record<number, number>;
+        } catch {
+          wheelNotes.value = {};
+        }
+      }
+    },
+  );
+  function saveWheelNotes(next: Record<number, number>) {
+    wheelNotes.value = next;
+    const id = attempt.value?.attemptId;
+    if (!id) return;
+    if (Object.keys(next).length)
+      notesStore?.setItem(wheelNotesKey(id), JSON.stringify(next));
+    else notesStore?.removeItem(wheelNotesKey(id));
+  }
+  /** Wheel up counts 1, 2, … region size, then clears; wheel down counts backwards like right-click. */
+  function stepWheelNote(cell: number, direction: 1 | -1) {
+    const current = attempt.value;
+    if (
+      !current ||
+      current.givens[cell] !== 0 ||
+      current.status === "COMPLETED"
+    )
+      return;
+    const size = current.regionIds.filter(
+      (region) => region === current.regionIds[cell],
+    ).length;
+    const value = wheelNotes.value[cell] ?? 0;
+    const next =
+      direction > 0 ? (value + 1) % (size + 1) : value === 0 ? size : value - 1;
+    const notes = { ...wheelNotes.value };
+    if (next) notes[cell] = next;
+    else delete notes[cell];
+    saveWheelNotes(notes);
+  }
+  function clearWheelNote(cell: number | undefined) {
+    if (cell === undefined || !(cell in wheelNotes.value)) return;
+    const notes = { ...wheelNotes.value };
+    delete notes[cell];
+    saveWheelNotes(notes);
+  }
   const job = ref<GenerationJob>();
   const selectedCell = ref<number>();
   const preset = ref("7x5");
@@ -628,6 +695,9 @@ export const useGameStore = defineStore("game", () => {
 
   return {
     attempt,
+    wheelNotes,
+    stepWheelNote,
+    clearWheelNote,
     job,
     selectedCell,
     selectedValue,

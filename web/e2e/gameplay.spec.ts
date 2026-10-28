@@ -116,30 +116,49 @@ test("left/right board clicks cycle values and count clicks in the HUD", async (
   await expect(page.getByLabel("Total clicks")).toHaveText("2");
 });
 
-test("notes, cycling, history, pause/reload and replay are Java-persisted", async ({
+test("wheel notes, cycling, history, pause/reload and replay are persisted", async ({
   page,
   request,
 }) => {
   const { board, editorSessionId } = await openGame(page, request);
   const cell = board.givens.indexOf(0);
-  await page.locator(".cell").nth(cell).click();
-  await page.getByLabel("Manual notes", { exact: false }).check();
-  await page.locator(".cell").nth(cell).press("1");
-  await expect(
-    page.locator(".cell").nth(cell).locator(".manual-notes"),
-  ).toHaveText("1");
+  const regionSize = board.regionIds.filter(
+    (id) => id === board.regionIds[cell],
+  ).length;
+  const note = page.locator(".cell").nth(cell).locator(".wheel-note");
+  await expect(page.getByLabel("Manual notes", { exact: false })).toHaveCount(
+    0,
+  );
+  await page.locator(".cell").nth(cell).hover();
+  await page.mouse.wheel(0, -100);
+  await expect(note).toHaveText("1");
+  await page.mouse.wheel(0, -100);
+  await expect(note).toHaveText(regionSize > 1 ? "2" : "");
+  await page.mouse.wheel(0, 100);
+  await expect(note).toHaveText("1");
+  await page.mouse.wheel(0, 100);
+  await expect(note).toHaveCount(0);
+  await page.mouse.wheel(0, 100);
+  await expect(note).toHaveText(String(regionSize));
+  await expect(page.getByLabel("Total clicks")).toHaveText("0");
+  await page.reload();
+  await expect(note).toHaveText(String(regionSize));
+  await expect(page.locator(".board-meta")).toContainText("SUSPENDED");
+  await page.getByRole("button", { name: "Resume game", exact: true }).click();
   await expect(page.locator(".board-meta")).toContainText("READY");
+  await expect(note).toHaveText(String(regionSize));
+  await expect(page.getByLabel("Total clicks")).toHaveText("0");
   await expect(
     page.getByRole("button", { name: "Show candidates", exact: true }),
   ).toHaveCount(0);
   await page
     .getByRole("button", { name: "Save checkpoint", exact: true })
     .click();
-  await page.getByLabel("Manual notes", { exact: false }).uncheck();
   await page.getByLabel("Click to change cycle", { exact: false }).check();
   await page.locator(".cell").nth(cell).click();
   await expect(page.locator(".board-meta")).toContainText("PLAYING");
   await expect(page.locator(".cell").nth(cell)).toHaveText("1");
+  await expect(note).toHaveCount(0);
   await page.locator(".cell").nth(cell).click({ button: "right" });
   await expect(page.locator(".cell").nth(cell)).toHaveText("");
   await page.getByRole("button", { name: "Undo", exact: true }).click();
@@ -150,9 +169,7 @@ test("notes, cycling, history, pause/reload and replay are Java-persisted", asyn
   await page
     .getByRole("button", { name: "Restore checkpoint", exact: true })
     .click();
-  await expect(
-    page.locator(".cell").nth(cell).locator(".manual-notes"),
-  ).toHaveText("1");
+  await expect(page.locator(".cell").nth(cell)).toHaveText("");
   await page.getByRole("button", { name: "Pause game", exact: true }).click();
   await expect(page.locator(".board-meta")).toContainText("SUSPENDED");
   const stopped = await page.getByLabel("Active elapsed time").textContent();
