@@ -236,9 +236,11 @@ public final class GameProgress {
     }
 
     private static boolean related(PuzzleDefinition puzzle, int first, int second) {
-        return puzzle.regionIdAt(first) == puzzle.regionIdAt(second)
-                || Math.abs(first % puzzle.columns() - second % puzzle.columns()) <= 1
-                && Math.abs(first / puzzle.columns() - second / puzzle.columns()) <= 1;
+        if (puzzle.regionIdAt(first) == puzzle.regionIdAt(second)) return true;
+        for (int neighbor : puzzle.topology().conflictNeighbors(first)) {
+            if (neighbor == second) return true;
+        }
+        return false;
     }
 
     public static int[] candidates(PuzzleDefinition puzzle, int[] values, int cell) {

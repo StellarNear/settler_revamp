@@ -64,8 +64,15 @@ troubleshoot a launch problem. Logs are written to its `logs` subdirectory.
 
 ## Generation and difficulty
 
-Regions are connected through shared sides; equal numbers may not touch, including
-at corners. Random patch rebuilding changes region shapes without prescribing a
+Regions are connected through shared sides. The tile selector offers **Sides only**
+and **Sides + corners** variants for squares and pentagons: equal numbers cannot
+share an edge, and the latter also forbids touching at a corner. Numbers within a
+region must still be distinct under either rule. Hexagons and triangles use shared
+sides only. Existing square games retain sides + corners; existing pentagon games
+retain sides only. The chosen variant is saved with each puzzle and shown in
+settings, game information, history and the tile filter.
+
+Random patch rebuilding changes region shapes without prescribing a
 width or height, while preserving a valid complete filling. This is constrained
 random generation, not a uniform draw from all mathematically possible maps.
 Every generated puzzle is separately proved to have exactly one solution.

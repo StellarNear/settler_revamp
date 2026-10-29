@@ -632,13 +632,18 @@ select {
   cursor: default;
   opacity: 1;
 }
-.cell.conflict {
-  box-shadow: inset 0 0 0 3px #97352e;
+.cell-conflict-overlay {
+  position: absolute;
+  inset: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  overflow: visible;
+  pointer-events: none;
 }
-.cell.conflict.selected {
-  box-shadow:
-    inset 0 0 0 2px #fffc,
-    inset 0 0 0 5px #97352e;
+@keyframes conflict-march {
+  to {
+    stroke-dashoffset: -25;
+  }
 }
 .cell:not(:disabled):hover .cell-value {
   transform: translateY(-1px) scale(1.05);
@@ -733,10 +738,17 @@ select {
   stroke-width: 0.08;
   stroke-dasharray: 0.14 0.1;
 }
-.poly-cell.conflict {
-  stroke: #97352e;
-  stroke-width: 0.1;
-  stroke-dasharray: none;
+.cell-conflict-outline,
+.poly-conflict-outline {
+  fill: none;
+  stroke: #ff4b1f;
+  stroke-width: 5px;
+  stroke-linejoin: round;
+  stroke-dasharray: 15 10;
+  filter: drop-shadow(0 0 2px #3b0808) drop-shadow(0 0 4px #ff6a2399);
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  animation: conflict-march 0.6s linear infinite;
 }
 .poly-label {
   position: absolute;
@@ -1424,7 +1436,9 @@ footer {
     scroll-behavior: auto !important;
   }
   .win-dialog[open],
-  .win-trophy {
+  .win-trophy,
+  .cell-conflict-outline,
+  .poly-conflict-outline {
     animation: none;
   }
   .win-confetti {

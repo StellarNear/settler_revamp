@@ -7,7 +7,7 @@ import { useDataStore } from "../stores/data";
 import TerrainBoard from "../components/TerrainBoard.vue";
 import PlayerPicker from "../components/PlayerPicker.vue";
 import { biomes } from "../terrain";
-import { shapeLabels } from "../shapes";
+import { contactRuleDescription, shapeLabels } from "../shapes";
 import { assignPlayer, loadPlayers } from "../dataApi";
 const game = useGameStore();
 const data = useDataStore();
@@ -27,6 +27,9 @@ const time = computed(() => {
   const seconds = Math.floor(game.elapsedMillis / 1_000);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 });
+const clueCount = computed(
+  () => game.attempt?.givens.filter((value) => value !== 0).length ?? 0,
+);
 const presetNames: Record<string, string> = {
   "3x3": "Tiny",
   "4x4": "Small",
@@ -317,6 +320,7 @@ onUnmounted(() => {
                 <dd>
                   {{ game.attempt.puzzleSettings.difficulty }} · max
                   {{ game.attempt.puzzleSettings.maxRegionSize }}
+                  · {{ clueCount }} clues
                 </dd>
               </div>
             </dl>
@@ -485,8 +489,12 @@ onUnmounted(() => {
         <h2 id="rules-title">Reading the atlas</h2>
         <p>
           Every bold-bordered region contains each number from 1 to its number
-          of cells exactly once. Equal numbers cannot touch, including
-          diagonally.
+          of cells exactly once.
+          {{
+            contactRuleDescription(
+              game.attempt.puzzleSettings?.shape ?? "SQUARE",
+            )
+          }}
         </p>
         <p>
           Terrain is decorative. Two forest regions remain separate when a bold

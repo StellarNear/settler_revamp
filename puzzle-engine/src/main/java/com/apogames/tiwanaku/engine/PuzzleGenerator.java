@@ -40,7 +40,7 @@ public final class PuzzleGenerator {
             int[] regionIds;
             int[] solution;
             PuzzleDefinition regionLayout;
-            if (spec.shape() != TileShape.SQUARE) {
+            if (!spec.shape().isSquare()) {
                 int[][] grown = createGrownLayout(spec, random.split());
                 if (grown == null) {
                     continue;

@@ -14,9 +14,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * Cell adjacency of a board.
  *
  * <p>Region neighbors share a side and define region connectivity. Conflict neighbors may never hold
- * equal values: the 8 surrounding cells on squares (the original rule) and shared sides on every other
- * tiling. Vertex contact is ignored there: six triangles meet at a vertex, which would forbid small
- * regions, and Cairo pentagons touch seven cells, which made maximum size 5 layouts nearly impossible.
+ * equal values: shared sides, plus shared corners in the SQUARE and PENTAGON_CORNERS variants.
+ * SQUARE preserves the original 8-neighbor rule; PENTAGON preserves its side-only rule.
+ * Region connectivity always requires shared sides, regardless of the conflict rule.
  *
  * <p>Non-square boards contain exactly {@code columns × rows} tiles cut from a large tiling as the
  * most compact rectangle-like patch with a {@code columns : rows} aspect ratio.
@@ -48,7 +48,7 @@ public final class Topology {
             throw new IllegalArgumentException("Board dimensions must contain between 1 and 240 cells");
         }
         return CACHE.computeIfAbsent(shape + ":" + columns + "x" + rows,
-                key -> shape == TileShape.SQUARE ? square(columns, rows) : polygonal(shape, columns, rows));
+                key -> shape.isSquare() ? square(shape, columns, rows) : polygonal(shape, columns, rows));
     }
 
     public TileShape shape() {
@@ -82,7 +82,7 @@ public final class Topology {
         return polygons[cell].clone();
     }
 
-    private static Topology square(int columns, int rows) {
+    private static Topology square(TileShape shape, int columns, int rows) {
         int count = columns * rows;
         int[][] region = new int[count][];
         int[][] conflict = new int[count][];
@@ -103,10 +103,12 @@ public final class Topology {
                     if (neighbor != cell) around.add(neighbor);
                 }
             }
-            conflict[cell] = around.stream().mapToInt(Integer::intValue).toArray();
+            conflict[cell] = shape.includesCornerConflicts()
+                    ? around.stream().mapToInt(Integer::intValue).toArray()
+                    : Arrays.stream(region[cell]).sorted().toArray();
             polygons[cell] = new double[]{x, y, x + 1, y, x + 1, y + 1, x, y + 1};
         }
-        return new Topology(TileShape.SQUARE, columns, rows, region, conflict, polygons);
+        return new Topology(shape, columns, rows, region, conflict, polygons);
     }
 
     private static Topology polygonal(TileShape shape, int columns, int rows) {
@@ -115,8 +117,8 @@ public final class Topology {
         List<double[]> patch = switch (shape) {
             case HEXAGON -> hexagons(reach);
             case TRIANGLE -> triangles(reach);
-            case PENTAGON -> pentagons(reach);
-            case SQUARE -> throw new IllegalStateException();
+            case PENTAGON, PENTAGON_CORNERS -> pentagons(reach);
+            case SQUARE, SQUARE_SIDES_ONLY -> throw new IllegalStateException();
         };
         double aspect = (double) columns / rows;
         Comparator<double[]> compact = Comparator
@@ -171,12 +173,16 @@ public final class Topology {
         int[][] conflict = new int[count][];
         for (int cell = 0; cell < count; cell++) {
             List<Integer> sides = new ArrayList<>();
+            List<Integer> touching = new ArrayList<>();
             for (int other = 0; other < count; other++) {
                 int shared = sharedVertices[cell][other];
                 if (shared >= 2) sides.add(other);
+                if (shared >= 1) touching.add(other);
             }
             region[cell] = sides.stream().mapToInt(Integer::intValue).toArray();
-            conflict[cell] = region[cell];
+            conflict[cell] = shape.includesCornerConflicts()
+                    ? touching.stream().mapToInt(Integer::intValue).toArray()
+                    : region[cell];
         }
         requireConnected(region);
         return new Topology(shape, columns, rows, region, conflict, polygons);

@@ -392,7 +392,7 @@ public final class AttemptService {
     }
 
     private static double[][] cellPolygons(PuzzleDefinition definition) {
-        if (definition.shape() == TileShape.SQUARE) {
+        if (definition.shape().isSquare()) {
             return null;
         }
         double[][] polygons = new double[definition.cellCount()][];

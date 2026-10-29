@@ -11,12 +11,14 @@ export const difficulties = [
 export const difficultySchema = z.enum(difficulties);
 export const tileShapes = [
   "SQUARE",
+  "SQUARE_SIDES_ONLY",
   "HEXAGON",
   "TRIANGLE",
   "PENTAGON",
+  "PENTAGON_CORNERS",
 ] as const;
 export type TileShape = (typeof tileShapes)[number];
-/** Records and settings saved before tile shapes existed were square. */
+/** Old squares include corners; old pentagons use sides only. Missing shapes were square. */
 export const tileShapeSchema = z
   .enum(tileShapes)
   .nullish()

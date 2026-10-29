@@ -72,7 +72,7 @@ onUnmounted(() => {
       <h1>Find the pattern.<br /><em>Shape the whole.</em></h1>
       <p>
         Place one of each number in every connected region.<br />Equal numbers
-        cannot touch, even diagonally.
+        cannot share an edge; Sides + corners also forbids corner contact.
       </p>
     </section>
     <div class="server-status" aria-live="polite">

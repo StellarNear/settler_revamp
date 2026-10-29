@@ -4,7 +4,7 @@ import { computed } from "vue";
 import { useGameStore } from "../stores/game";
 import { useDataStore } from "../stores/data";
 import { difficulties, tileShapes } from "../api";
-import { shapeLabels } from "../shapes";
+import { contactRuleDescription, shapeLabels } from "../shapes";
 const game = useGameStore();
 const router = useRouter();
 const data = useDataStore();
@@ -46,8 +46,9 @@ async function generate() {
             <li>
               The generator builds connected regions and a complete, valid
               number filling. A region of five tiles contains 1 to 5, and equal
-              numbers cannot touch, even at corners. Max region is a limit, not
-              a requirement that every region be that size.
+              numbers cannot share an edge. With Sides + corners, they cannot
+              touch at a corner either. Max region is a limit, not a requirement
+              that every region be that size.
             </li>
             <li>
               It repeatedly reshapes neighbouring regions into random connected
@@ -90,6 +91,7 @@ async function generate() {
         </option>
       </select></label
     >
+    <p>{{ contactRuleDescription(game.shape) }}</p>
     <label
       ><span>MAX REGION</span
       ><select v-model.number="game.maxRegionSize" :disabled="choicesLocked">

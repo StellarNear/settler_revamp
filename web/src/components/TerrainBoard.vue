@@ -92,7 +92,12 @@ const selectedRegion = computed(() =>
 const selectedGeometry = computed(() =>
   geometry.value.regions.find((region) => region.id === selectedRegion.value),
 );
-const selectedBoundary = computed(() => selectedGeometry.value?.boundary);
+const hoveredCell = ref<number>();
+const hoveredGeometry = computed(() =>
+  geometry.value.regions.find(
+    (region) => region.id === props.attempt.regionIds[hoveredCell.value ?? -1],
+  ),
+);
 const selectedBiome = computed(() => selectedGeometry.value?.biome);
 const cellSize = computed(() =>
   fullscreen.value
@@ -384,9 +389,9 @@ defineExpose({ focus, selectedBiome });
           </g>
           <path class="cell-separators" :d="geometry.separators" fill="none" />
           <path
-            v-if="selectedGeometry"
+            v-if="hoveredGeometry"
             class="selected-region-fill"
-            :d="selectedGeometry.path"
+            :d="hoveredGeometry.path"
           />
           <path
             class="region-boundary-halo"
@@ -399,15 +404,15 @@ defineExpose({ focus, selectedBiome });
             fill="none"
           />
           <path
-            v-if="selectedBoundary"
+            v-if="hoveredGeometry"
             class="selected-region-boundary-halo"
-            :d="selectedBoundary"
+            :d="hoveredGeometry.boundary"
             fill="none"
           />
           <path
-            v-if="selectedBoundary"
+            v-if="hoveredGeometry"
             class="selected-region-boundary"
-            :d="selectedBoundary"
+            :d="hoveredGeometry.boundary"
             fill="none"
           />
         </svg>
@@ -436,6 +441,16 @@ defineExpose({ focus, selectedBiome });
               @click="tileClick(index, $event)"
               @contextmenu.prevent="tileSecondary(index)"
               @wheel="wheel(index, $event)"
+              @pointerenter="hoveredCell = index"
+              @pointerleave="hoveredCell = undefined"
+            />
+            <path
+              v-for="index in attempt.progress.conflicts"
+              :key="`conflict-${index}`"
+              class="poly-conflict-outline"
+              :d="polygonGeometry.cellPaths[index]"
+              pathLength="100"
+              aria-hidden="true"
             />
           </svg>
           <template
@@ -492,7 +507,26 @@ defineExpose({ focus, selectedBiome });
               @click="emit('select', index, $event)"
               @contextmenu.prevent="emit('secondary', index)"
               @wheel="wheel(index, $event)"
+              @pointerenter="hoveredCell = index"
+              @pointerleave="hoveredCell = undefined"
             >
+              <svg
+                v-if="attempt.progress.conflicts.includes(index)"
+                class="cell-conflict-overlay"
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <rect
+                  class="cell-conflict-outline"
+                  x="0"
+                  y="0"
+                  width="100"
+                  height="100"
+                  pathLength="100"
+                />
+              </svg>
               <span
                 v-if="attempt.values[index]"
                 class="cell-value"

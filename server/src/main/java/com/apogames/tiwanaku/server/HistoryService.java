@@ -254,7 +254,9 @@ public final class HistoryService {
                     || puzzle.seed() == null || !puzzle.seed().matches("-?[0-9]{1,19}")
                     || puzzle.engineVersion() == null || puzzle.engineVersion().length() > 64
                     || puzzle.generatorVersion() == null || puzzle.generatorVersion().length() > 64
-                    || puzzle.shape() != null && !List.of("SQUARE","HEXAGON","TRIANGLE","PENTAGON").contains(puzzle.shape())))
+                    || puzzle.shape() != null
+                    && !List.of("SQUARE","SQUARE_SIDES_ONLY","HEXAGON","TRIANGLE","PENTAGON","PENTAGON_CORNERS")
+                            .contains(puzzle.shape())))
                 throw ApiException.badRequest("Invalid puzzle settings metadata");
         }
         return payload;

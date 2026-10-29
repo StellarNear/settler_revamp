@@ -10,7 +10,7 @@ public record LocalSettings(
         @Min(5) @Max(9) int maxRegionSize,
         @NotNull @Pattern(regexp="EASY|MEDIUM|HARD|EXTREME|GODLIKE") String difficulty,
         @NotNull @Pattern(regexp="[A-Za-z]{0,3}") String playerTag,
-        @Pattern(regexp="SQUARE|HEXAGON|TRIANGLE|PENTAGON") String shape) {
+        @Pattern(regexp="SQUARE|SQUARE_SIDES_ONLY|HEXAGON|TRIANGLE|PENTAGON|PENTAGON_CORNERS") String shape) {
     public LocalSettings normalized() {
         return new LocalSettings(locale, theme, reducedDetail, showConflicts, preset, maxRegionSize,
                 difficulty, playerTag.toUpperCase(java.util.Locale.ROOT), shape == null ? "SQUARE" : shape);

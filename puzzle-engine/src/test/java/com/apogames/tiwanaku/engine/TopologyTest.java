@@ -106,10 +106,10 @@ class TopologyTest {
 
     private static int sidesOf(TileShape shape) {
         return switch (shape) {
-            case SQUARE -> 4;
+            case SQUARE, SQUARE_SIDES_ONLY -> 4;
             case HEXAGON -> 6;
             case TRIANGLE -> 3;
-            case PENTAGON -> 5;
+            case PENTAGON, PENTAGON_CORNERS -> 5;
         };
     }
 
